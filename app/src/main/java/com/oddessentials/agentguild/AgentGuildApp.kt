@@ -24,6 +24,9 @@ class AgentGuildApp : Application() {
     var links: LinkOpener = LinkOpener.CustomTabs
     var events: PageEvents = PageEvents.None
 
+    /** Set by instrumented tests in place of the camera: it receives what the scanner does with each read. */
+    var scanResults: ((deliver: (texts: List<String>) -> Unit) -> Unit)? = null
+
     override fun onCreate() {
         super.onCreate()
         store = ComputerStore.create(

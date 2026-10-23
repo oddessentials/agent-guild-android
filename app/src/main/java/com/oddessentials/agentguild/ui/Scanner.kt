@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.oddessentials.agentguild.AgentGuildApp
+import com.oddessentials.agentguild.app
 import com.oddessentials.agentguild.scan.QrReader
 import java.util.concurrent.Executors
 
@@ -86,8 +88,24 @@ private fun CameraPreview(onScan: (String) -> Unit) {
     val scanner = remember { QrReader.client() }
     val executor = remember { Executors.newSingleThreadExecutor() }
     var done by remember { mutableStateOf(false) }
+    // The effect outlives the composition that started it, so it calls the newest onScan.
+    val currentOnScan by rememberUpdatedState(onScan)
 
     DisposableEffect(lifecycleOwner) {
+        val deliver = { texts: List<String> ->
+            val link = texts.firstOrNull { AgentGuildApp.parseLink(it) != null }
+            if (link != null && !done) {
+                done = true
+                currentOnScan(link)
+            }
+        }
+        context.app.scanResults?.let { injected ->
+            injected(deliver)
+            return@DisposableEffect onDispose {
+                scanner.close()
+                executor.shutdown()
+            }
+        }
         val future = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
         var disposed = false
@@ -105,11 +123,7 @@ private fun CameraPreview(onScan: (String) -> Unit) {
                 val input = InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees)
                 QrReader.read(scanner, input).addOnCompleteListener(ContextCompat.getMainExecutor(context)) { task ->
                     proxy.close()
-                    val link = task.takeIf { it.isSuccessful }?.result?.firstOrNull { AgentGuildApp.parseLink(it) != null }
-                    if (link != null && !done) {
-                        done = true
-                        onScan(link)
-                    }
+                    if (task.isSuccessful) deliver(task.result)
                 }
             }
             val camera = provider!!

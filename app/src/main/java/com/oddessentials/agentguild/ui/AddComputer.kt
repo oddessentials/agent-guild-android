@@ -64,12 +64,16 @@ fun AddComputer(updating: String?, scanFirst: Boolean, onDone: () -> Unit) {
             problem = "That isn't an Agent Guild sign-in link."
             return
         }
-        if (updating != null && (target == null || !signIn.isFor(target))) {
-            problem = if (target == null) "This computer was removed." else "This sign-in link is for a different computer."
-            return
-        }
         checking = scope.launch {
             try {
+                // The computer as the store has it now, not as this screen first saw it.
+                if (updating != null) {
+                    val current = app.store.current().firstOrNull { it.id == updating }
+                    if (current == null || !signIn.isFor(current)) {
+                        problem = if (current == null) "This computer was removed." else "This sign-in link is for a different computer."
+                        return@launch
+                    }
+                }
                 when (val result = Health.check(signIn.address, signIn.token, app::isOnline)) {
                     is HealthResult.Failed -> problem = result.problem.message
                     is HealthResult.Supported -> {
