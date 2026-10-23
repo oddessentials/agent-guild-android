@@ -57,6 +57,26 @@ class HealthCheckTest {
     }
 
     @Test
+    fun anAnswerTooLargeToReadIsNotAgentGuild() = runBlocking {
+        val padding = " ".repeat(Health.MAX_BODY)
+        answer(200, """{"name":"agent-guild","version":"1.9.0"}$padding""")
+        assertEquals(HealthResult.Failed(HealthProblem.NotAgentGuild), Health.check(address, token) { true })
+    }
+
+    @Test
+    fun anAnswerOfExactlyTheLimitIsRead() = runBlocking {
+        val json = """{"name":"agent-guild","version":"1.9.0"}"""
+        answer(200, json + " ".repeat(Health.MAX_BODY - json.length))
+        assertEquals(HealthResult.Supported("1.9.0"), Health.check(address, token) { true })
+    }
+
+    @Test
+    fun aLargeErrorBodyKeepsItsStatus() = runBlocking {
+        answer(401, "x".repeat(Health.MAX_BODY * 2))
+        assertEquals(HealthResult.Failed(HealthProblem.TokenRejected), Health.check(address, token) { true })
+    }
+
+    @Test
     fun aClosedPortIsRefused() = runBlocking {
         answer(200, "")
         val closed = address

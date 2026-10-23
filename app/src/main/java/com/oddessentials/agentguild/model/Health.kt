@@ -1,6 +1,7 @@
 package com.oddessentials.agentguild.model
 
 import java.io.IOException
+import java.io.InputStream
 import java.net.ConnectException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -114,7 +115,8 @@ object Health {
             try {
                 val status = connection.responseCode
                 val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-                val body = stream?.use { it.readNBytes(MAX_BODY).decodeToString() }.orEmpty()
+                // A body too large to read whole is never taken as Agent Guild's answer.
+                val body = stream?.use { readBody(it) }?.decodeToString().orEmpty()
                 evaluate(status, body)
             } catch (error: IOException) {
                 HealthResult.Failed(problem(error, online()))
@@ -128,5 +130,20 @@ object Health {
         }
     }
 
-    private const val MAX_BODY = 64 * 1024
+    const val MAX_BODY = 64 * 1024
+
+    /**
+     * The whole of [input], or null when it is longer than [limit] bytes. InputStream.readNBytes needs
+     * API 33, and the app supports API 29.
+     */
+    fun readBody(input: InputStream, limit: Int = MAX_BODY): ByteArray? {
+        val buffer = ByteArray(limit + 1)
+        var read = 0
+        while (read < buffer.size) {
+            val count = input.read(buffer, read, buffer.size - read)
+            if (count == -1) return buffer.copyOf(read)
+            read += count
+        }
+        return null
+    }
 }

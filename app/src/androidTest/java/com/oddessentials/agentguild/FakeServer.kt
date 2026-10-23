@@ -80,7 +80,7 @@ class FakeServer(val port: Int) : AutoCloseable {
             if (header.isEmpty()) break
             if (header.startsWith("Content-Length:", ignoreCase = true)) length = header.substringAfter(':').trim().toInt()
         }
-        val body = String(input.readNBytes(length))
+        val body = String(readExactly(input, length))
         val request = Request(parts[0], parts[1], body)
         requests += request
         arrivals += request
@@ -101,6 +101,18 @@ class FakeServer(val port: Int) : AutoCloseable {
             write(bytes)
             flush()
         }
+    }
+
+    /** InputStream.readNBytes needs API 33, and the tests also run on API 29. */
+    private fun readExactly(input: InputStream, length: Int): ByteArray {
+        val bytes = ByteArray(length)
+        var read = 0
+        while (read < length) {
+            val count = input.read(bytes, read, length - read)
+            if (count == -1) break
+            read += count
+        }
+        return bytes.copyOf(read)
     }
 
     private fun readLine(input: InputStream): String? {

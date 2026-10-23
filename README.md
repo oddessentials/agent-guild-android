@@ -172,6 +172,7 @@ Debug builds also accept `http://127.0.0.1:<port>` sign-in links, and allow clea
 ```powershell
 . tools/emulator/env.ps1
 ./gradlew.bat :app:testDebugUnitTest                # JVM tests
+./gradlew.bat :app:lintDebug                        # must report no errors; it checks every call against minSdk 29
 ./gradlew.bat :app:assembleDebug
 ```
 
@@ -186,7 +187,7 @@ $token = (Get-Content <scratch folder>/auth-token).Trim()
 
 - `SignInTest`, `PageTest` and `QrTest` use the scratch manager: sign-in by link, a rejected token, loading, `ready`, the token leaving the address, view switching, a link opening outside, a navigation elsewhere cancelled, `window.open` refused, a new `WebView` after the renderer is terminated, and a sign-in QR code drawn by the manager's own `paintQr` and read through ML Kit.
 - `HostileTest` stages what the real manager can't with two servers inside the test process on the device's loopback interface, ports 47941 and 47942: a redirect to another origin, a form posted to another origin, a microphone request from a frame of another origin, and a manager whose `/api/v1/info` answer changes before `ON_RESUME`.
-- `StartupTest` replaces the feature check; `StoreTest` uses the Android Keystore.
+- `StartupTest` replaces the feature check; `StoreTest` uses the Android Keystore. These two and `HealthCheckDeviceTest` need no WebView feature, so they also run on `ag29`.
 - Waits go through the Compose test rule: its clock advances only while the rule synchronizes, so a test thread that blocks any other way stops the screens from changing.
 
 ### Later
