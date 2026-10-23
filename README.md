@@ -2,7 +2,7 @@
 
 An app that connects to a computer running [Agent Guild](https://github.com/oddessentials/agent-guild) and shows its Cards and Yard, as [agent-guild-apple](https://github.com/oddessentials/agent-guild-apple) does on iPhone, iPad and Apple Vision Pro.
 
-This repository holds the plan, the emulator tools and a verification probe. The app itself is the next step: see [Next: the first version](#next-the-first-version).
+This repository holds the app, its tests, the emulator tools and a verification probe. See [The app](#the-app) for how it is built and tested.
 
 ## The approach
 
@@ -43,19 +43,21 @@ agent-guild's `docs/api.md`, **The page in the Agent Guild app → Android**, is
 - The app accepts a message only when `isMainFrame` is true and `sourceOrigin` equals the manager's origin, then parses the JSON and accepts only those types with their fields.
 - To show a view, the app runs `window.postMessage({ source: "agent-guild-app", type: "view", view }, location.origin)` with `evaluateJavascript` after `onPageFinished`. `view` is `"cards"` or `"yard"`, from a fixed list, never from text.
 
-The page needs agent-guild's change "feat: support Agent Guild in the Android app web view". The app's minimum Agent Guild version is the first release that carries it.
+The page needs agent-guild's change "feat: support Agent Guild in the Android app web view". The app's minimum Agent Guild version is the first release that carries it, 1.9.0 (`Health.MINIMUM_VERSION`). A development build reports `0.0.0-development` and is accepted, as the Apple app does.
+
+The app accepts `ready` and `open`. It ignores `expand`, which only the compact layout sends, and `look`, which only a framed page sends; the app loads neither.
 
 ## WebView security
 
 No new navigation framework: the app uses `WebViewClient` and `WebChromeClient` directly.
 
 - **First load:** only a URL built from a saved, validated computer: `<address>/#token=<token>` plus `&view=`.
-- **Navigation and redirects:** `shouldOverrideUrlLoading` cancels any main-frame load whose origin isn't the manager's. A link the user followed opens in a Custom Tab instead, only for `http` and `https`. Server redirects reach the same check. As a second guard, `onPageStarted` stops a main-frame page whose origin isn't the manager's and shows the error screen.
+- **Navigation and redirects:** `shouldOverrideUrlLoading` cancels any main-frame load whose origin isn't the manager's. A link the user followed opens in a Custom Tab instead, only for `http` and `https`. Server redirects reach the same check, and are never opened outside. As a second guard, `onPageStarted` stops a main-frame page whose origin isn't the manager's and shows the error screen; it is what stops a form posted elsewhere, which `shouldOverrideUrlLoading` never sees. A URL that contains the token never goes to a Custom Tab, from a link or from the bridge.
 - **New windows:** `setSupportMultipleWindows(true)`, and `onCreateWindow` returns `false`. The page sends links through the bridge instead.
 - **Renderer recovery:** `onRenderProcessGone` destroys the `WebView`, creates a new one and loads the same validated URL.
 - **Settings:** JavaScript and DOM storage on; file and content access off; mixed content never allowed; no `addJavascriptInterface`; `setWebContentsDebuggingEnabled` in debug builds only.
-- **Microphone:** `onPermissionRequest` grants only `PermissionRequest.RESOURCE_AUDIO_CAPTURE`, only when the request's origin is exactly the manager's, and only after the user has granted the `RECORD_AUDIO` runtime permission. Every other request, origin or resource is denied.
-- **Storage of computers:** name, address and token in DataStore, encrypted with an AES-GCM key from the Android Keystore, and kept out of cloud backups and device transfers through `dataExtractionRules` and `fullBackupContent`.
+- **Microphone:** `onPermissionRequest` grants only `PermissionRequest.RESOURCE_AUDIO_CAPTURE`, only when the request's origin is exactly the manager's, and only after the user has granted the `RECORD_AUDIO` runtime permission; the app asks for it at the page's first request. Every other request, origin or resource is denied.
+- **Storage of computers:** name, address and token in one DataStore file, `files/datastore/computers.sealed`, encrypted with a 256-bit AES-GCM key from the Android Keystore. A file that can't be opened, such as one without its key, reads as an empty list. The page keeps its own copy of the token in the `WebView`'s local storage, so `dataExtractionRules` and `fullBackupContent` keep all of the app's data out of cloud backups and device transfers, and `allowBackup` is off. The link being typed into Add Computer isn't saved with the activity's state.
 
 ## What was verified on the emulator
 
@@ -74,6 +76,18 @@ The probe in `tools/probe` checked each of these in the Android 17 emulator with
 | Tailscale | The emulator reaches tailnet addresses but doesn't resolve `ts.net` names. With `start.ps1 -Tailnet`, it loads `https://<computer>.<tailnet>.ts.net/api/v1/health` through Tailscale Serve, certificate included. |
 | Android 10 system image | Its built-in WebView is 74, without `WEB_MESSAGE_LISTENER` or WebGL2. The app's startup check is tested by controlling the feature check, not by relying on that image (see below). |
 
+The app's instrumented tests then checked these on `ag37`:
+
+| Question | Result |
+| --- | --- |
+| Does `shouldOverrideUrlLoading` see a form posted to another origin? | No. `onPageStarted` reports the other origin, and stopping there shows the error screen. |
+| What does `window.open` do when `onCreateWindow` returns `false`? | Without the user's tap, the popup blocker returns `null` before `onCreateWindow` is called. After a tap, it returns a window that is already `closed`, and nothing is requested from the URL. |
+| Does a main-frame redirect to another origin reach `shouldOverrideUrlLoading`? | Yes, with `isRedirect` true; cancelling it means the other origin gets no request. |
+| Which origin does `onPermissionRequest` report for a frame's `getUserMedia`? | The frame's. Denied there, the frame's `getUserMedia` rejects with `NotAllowedError`, while the page's own request is granted. |
+| What happens after `WebViewRenderProcess.terminate()`? | `onRenderProcessGone`; the new `WebView` loads the page again, which sends `ready` again. |
+| Can the page's own QR code be read? | Yes: `paintQr` from `web/remote-access.js` with `web/vendor/qrcode.mjs`, read by ML Kit's bundled model. |
+| What does `ag29` show? | The app installs and opens on the unsupported-WebView screen, naming its WebView, 74.0.3729.185. |
+
 ## Toolchain
 
 | | Version |
@@ -86,8 +100,15 @@ The probe in `tools/probe` checked each of these in the Android 17 emulator with
 | minSdk | 29 (Android 10), with the `WEB_MESSAGE_LISTENER` check at startup |
 | Build tools | 37.0.0 |
 | Emulator images | `google_apis` x86_64 for API 37.0 (`ag37`) and API 29 (`ag29`) |
+| Kotlin | 2.2.10, the version the Android Gradle Plugin brings; the Compose compiler plugin matches it |
+| Compose BOM | 2026.09.00, with Activity Compose 1.13.0 and Lifecycle Compose 2.10.0 |
+| CameraX | 1.6.2 |
+| ML Kit barcode scanning (bundled model) | 17.3.0 |
+| DataStore | 1.2.1 |
+| AndroidX Browser (Custom Tabs) | 1.9.0 |
+| Tests | JUnit 4.13.2, kotlinx-coroutines-test 1.11.0, AndroidX Test runner 1.7.0 and ext JUnit 1.3.0, Espresso 3.7.0 |
 
-These stay as they are unless a concrete compatibility problem calls for a change.
+Versions are in `gradle/libs.versions.toml`. Espresso is named because Compose's test library brings 3.5.0, which calls `InputManager.getInstance`, gone in API 37. These stay as they are unless a concrete compatibility problem calls for a change.
 
 ## Emulator tools
 
@@ -134,23 +155,43 @@ adb logcat -s AGPROBE:I
 - **Tests are deterministic:** no sleeps waiting for timing, and no dependence on the network beyond the scratch manager.
 - **Never commit** credentials, tokens, signing keys, `local.properties`, build output or machine-specific paths.
 
-## Next: the first version
+## The app
 
-The plan for the next session, in this repository:
+Kotlin and Compose, package `com.oddessentials.agentguild`, in `app/`:
 
-1. **Project.** Kotlin and Compose, with the toolchain above, package `com.oddessentials.agentguild`, and the Gradle wrapper at 9.8.2.
-2. **Startup check.** If `WEB_MESSAGE_LISTENER` isn't supported, show the `WebView` version and ask the user to update Android System WebView.
-3. **Computers.** The list, add, rename, remove and sign in again, stored as described under [WebView security](#webview-security).
-4. **Sign-in.** The parser above, a QR scanner using CameraX and ML Kit's bundled barcode model, and the `/api/v1/info` check. Errors read like the iOS app's `HealthProblem` messages, and the version check requires the Android host release.
-5. **The page.** The `WebView` with the bridge and every rule under [WebView security](#webview-security); the Yard/Cards switch, saved per window; Custom Tabs for links.
-6. **Recovery.** Check again on `ON_RESUME`. A rejected token or a changed address offers to scan or paste again; other failures keep the page with a banner.
-7. **Demo.** An entry that opens the public demo, `https://oddessentials.github.io/agent-guild/`, simulated, with no computer needed.
-8. **Tests.**
-   - JVM: the parser's accept and reject cases; the health answers; the navigation, bridge and permission decisions; the store.
-   - Instrumented, on `ag37` against a scratch manager: sign-in, loading, `ready`, view switching, a link opening outside, an off-origin navigation and redirect cancelled, `onCreateWindow` refused, microphone requests from another origin denied, recovery after a renderer crash, and a generated sign-in QR image read through ML Kit.
-   - The unsupported-WebView screen, with the feature check replaced.
+- `model/`: what the JVM tests cover. `SignInLink` (the parser above), `Origin`, `Health` (the `/api/v1/info` check and its `HealthProblem` messages, which read like the Apple app's), `Bridge`, `Navigation`, `Microphone`, `Recovery`, and `Json`, a strict JSON reader: Android's `org.json` accepts single quotes, comments and unquoted names, and isn't available to JVM tests.
+- `data/`: the list of computers in DataStore, sealed by `AesGcmSealer`.
+- `web/PageWeb.kt`: the `WebView`, its clients and the bridge listener. `web/Hooks.kt` holds the startup feature check, the Custom Tab opener and the page events, which instrumented tests replace through `AgentGuildApp`.
+- `scan/` and `ui/Scanner.kt`: CameraX and ML Kit's bundled QR model.
+- `ui/`: the computer list (add, rename, sign in again, remove, the demo), Add Computer, the page screen and the unsupported-WebView screen. The page screen checks its computer at every `ON_RESUME`: a rejected token or a changed address offers to scan or paste the sign-in link again, and other failures keep the page with a banner. The Yard/Cards choice is saved with the window's state.
 
-Later, each needing its own approval: native Read aloud using `TextToSpeech` and `/api/v1/sessions/:id/reply` (a bridge change), several windows, and the compact Yard on a second display.
+Debug builds also accept `http://127.0.0.1:<port>` sign-in links, and allow cleartext only to `127.0.0.1` (`app/src/debug/res/xml/network_security_config.xml`); release builds allow no cleartext.
+
+### Building and testing
+
+```powershell
+. tools/emulator/env.ps1
+./gradlew.bat :app:testDebugUnitTest                # JVM tests
+./gradlew.bat :app:assembleDebug
+```
+
+The instrumented tests run on `ag37` with a scratch manager (see [Test boundaries](#test-boundaries)) reached through `adb reverse`. They take its token as the `managerToken` argument, and `managerAddress` when it isn't `http://127.0.0.1:47931`:
+
+```powershell
+pwsh tools/emulator/start.ps1 -Avd ag37
+adb reverse tcp:47931 tcp:47931
+$token = (Get-Content <scratch folder>/auth-token).Trim()
+./gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.managerToken=$token"
+```
+
+- `SignInTest`, `PageTest` and `QrTest` use the scratch manager: sign-in by link, a rejected token, loading, `ready`, the token leaving the address, view switching, a link opening outside, a navigation elsewhere cancelled, `window.open` refused, a new `WebView` after the renderer is terminated, and a sign-in QR code drawn by the manager's own `paintQr` and read through ML Kit.
+- `HostileTest` stages what the real manager can't with two servers inside the test process on the device's loopback interface, ports 47941 and 47942: a redirect to another origin, a form posted to another origin, a microphone request from a frame of another origin, and a manager whose `/api/v1/info` answer changes before `ON_RESUME`.
+- `StartupTest` replaces the feature check; `StoreTest` uses the Android Keystore.
+- Waits go through the Compose test rule: its clock advances only while the rule synchronizes, so a test thread that blocks any other way stops the screens from changing.
+
+### Later
+
+Each needs its own approval: native Read aloud using `TextToSpeech` and `/api/v1/sessions/:id/reply` (a bridge change), several windows, and the compact Yard on a second display.
 
 ## Release (proposed, not built)
 
