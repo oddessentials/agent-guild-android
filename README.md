@@ -2,7 +2,7 @@
 
 An app that connects to a computer running [Agent Guild](https://github.com/oddessentials/agent-guild) and shows its Cards and Yard, as [agent-guild-apple](https://github.com/oddessentials/agent-guild-apple) does on iPhone, iPad and Apple Vision Pro.
 
-This repository holds the app, its tests, the emulator tools and a verification probe. See [The app](#the-app) for how it is built and tested.
+This repository holds the app, its tests, the emulator tools, a verification probe, and the CI and release workflows. See [The app](#the-app) for how it is built and tested.
 
 ## The approach
 
@@ -192,18 +192,63 @@ $token = (Get-Content <scratch folder>/auth-token).Trim()
 
 ### Later
 
-Each needs its own approval: native Read aloud using `TextToSpeech` and `/api/v1/sessions/:id/reply` (a bridge change), several windows, and the compact Yard on a second display.
+Each needs its own approval: native Read aloud using `TextToSpeech` and `/api/v1/sessions/:id/reply` (a bridge change), several windows, the compact Yard on a second display, offering a newer release from inside the app, and registering the package and release key for Google's developer verification.
 
-## Release (proposed, not built)
+## CI and releases
 
-Nothing here is built or run until the app works and its security and integration tests pass, and nothing is published without explicit permission.
+Pull requests are squash-merged, so a pull request's title becomes its commit on `main`. `pr-title.yml` requires a [Conventional Commit](https://www.conventionalcommits.org/) title, which decides the next version.
 
-- A signed universal APK attached to each GitHub release, for people to download and install. No app store.
-- A release key generated once, stored as GitHub Actions secrets (the keystore in base64 and its passwords), and backed up offline. Android installs an update only when it is signed with the same key, so losing the key means every user reinstalls.
-- On each push to `main`, semantic-release picks the version from Conventional Commit titles, and `versionCode` is the workflow run number. Gradle builds the release APK, `apksigner` signs it with v2 and v3 signatures, and `apksigner verify` must pass. The APK and its SHA-256 are attached to the release.
-- Pull requests run the JVM tests, and the instrumented tests on an API 37 emulator against a scratch manager installed from npm.
-- The app looks at the latest GitHub release and offers the newer APK through the browser, so it needs no permission to install packages.
-- Google's developer verification covers sideloaded apps on certified devices: the package name and the release key are registered once in the Android Developer Console.
+### CI
+
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`, on `ubuntu-latest`:
+
+| Job | What it runs |
+| --- | --- |
+| Build, unit tests and lint | `testDebugUnitTest`, `lintDebug` and `assembleRelease` |
+| Signing (disposable key) | Signs the release APK with a key made for the job, as a release does, then `tests/release/apk.mjs` |
+| Release plan | `tests/release/plan.mjs` and `tests/release/publish.mjs` |
+| Instrumented tests (API 37) | The whole suite, against a scratch manager installed from npm at 1.9.0, the minimum version |
+| Instrumented tests (API 29) | `StartupTest`, `StoreTest` and `HealthCheckDeviceTest` |
+| Required checks | Passes only when all of the above pass |
+
+- **Emulators:** `ReactiveCircus/android-emulator-runner` boots the `google_apis` x86_64 image of each API level cold, with KVM, and with the emulator pinned to build 16428233 (37.2.12).
+- **Readiness and diagnostics:** `tools/ci/device-tests.sh` waits until Android is ready, then runs the tests. When either fails, it saves logcat, a screenshot, the activity stack, the WebView provider, the test reports and the manager's log, as the job's artifact.
+- **The token:** the job masks it in its log, the manager's log is saved with tokens replaced, and any saved file that contains the token is deleted.
+
+### Releases
+
+`.github/workflows/release.yml` runs on every push to `main`:
+
+1. **Plan.** semantic-release, as a dry run, plans the version from the titles since the last `v*` tag. `feat` gives a minor release, `fix`, `perf` and `revert` a patch, and `!` a major one; other types release nothing.
+2. **Build.** CI runs, and its build makes the release APK with `-PagentGuildVersion=<version>`.
+   - `versionCode` is major × 1,000,000 + minor × 1,000 + patch, so it rises with every release.
+   - Gradle and the plan refuse a version whose code doesn't fit: minor or patch above 999, or major above 2099.
+3. **Sign.** The sign job is the only one with the release key, and it runs no Gradle.
+   - `tools/release/apk.mjs` signs the APK with `apksigner`, with v2 and v3 signatures, and no v1 or v4.
+   - It then checks that the APK has both signatures, one signer whose certificate is `RELEASE_CERT_SHA256`, the app's package, version name and code, and isn't debuggable.
+4. **Publish.** The release job checks the files again, then `tools/release/publish.mjs` publishes them.
+   - It creates a draft release holding `agent-guild-<version>.apk` and `SHA256SUMS`, downloads both and compares them with the signed files, then creates the tag and makes the release public.
+   - A failed run leaves at most a draft, and re-running its failed jobs finishes it.
+   - Anything on GitHub that doesn't match stops the run without changing it, such as a tag on another commit or a draft holding another APK.
+
+The release notes are the changelog: the commits by type, how to install, and the APK's SHA-256. Run by hand on `main`, the workflow signs with the release key but publishes nothing; the signed APK stays a workflow artifact.
+
+The release key lives only on GitHub and in its offline backup:
+
+- the `release-signing` environment, deployable from `main` only, holds the secrets `RELEASE_KEYSTORE_BASE64`, a PKCS12 keystore whose key has the alias `agent-guild`, and `RELEASE_KEYSTORE_PASSWORD`;
+- the repository variable `RELEASE_CERT_SHA256` is the SHA-256 of the key's certificate.
+
+Android installs an update only when it is signed with the same key, so losing the key means every user reinstalls.
+
+To check the release tools locally, with `JAVA_HOME` and `ANDROID_HOME` set:
+
+```powershell
+npm ci --ignore-scripts --prefix .github/release
+node tests/release/plan.mjs
+node tests/release/publish.mjs
+./gradlew.bat :app:assembleRelease "-PagentGuildVersion=1.2.3"   # PowerShell splits the argument at its dots unless it is quoted
+node tests/release/apk.mjs app/build/outputs/apk/release/app-release-unsigned.apk 1.2.3
+```
 
 ## Limits known now
 
