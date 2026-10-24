@@ -25,9 +25,9 @@ sealed interface Destination {
 data class Page(val address: String, val token: String?) {
     val origin: Origin = requireNotNull(Origin.parse(address)) { "not a web address" }
 
-    /** `<address>/#token=<token>&view=<view>`; the demo has no token. */
-    fun url(view: PageView?): String {
-        val fragment = listOfNotNull(token?.let { "token=$it" }, view?.let { "view=${it.value}" })
+    /** `<address>/#token=<token>[&layout=compact]&view=<view>`; the demo has no token. */
+    fun url(view: PageView?, compact: Boolean = false): String {
+        val fragment = listOfNotNull(token?.let { "token=$it" }, "layout=compact".takeIf { compact }, view?.let { "view=${it.value}" })
         val base = if (address.endsWith("/")) address else "$address/"
         return if (fragment.isEmpty()) base else base + "#" + fragment.joinToString("&")
     }

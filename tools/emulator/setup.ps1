@@ -1,4 +1,4 @@
-# Installs the build toolchain and the two emulators into user folders, without administrator rights.
+# Installs the build toolchain and the emulators into user folders, without administrator rights.
 # Safe to run again: each step is skipped when its result is already there.
 # Usage: pwsh tools/emulator/setup.ps1 [-ToolsRoot <dir>] [-SdkRoot <dir>] [-AvdHome <dir>]
 
@@ -19,11 +19,13 @@ $packages = @(
     'platforms/android-37.0',
     'build-tools/37.0.0',
     'system-images/android-37.0/google_apis/x86_64',
-    'system-images/android-29/google_apis/x86_64'
+    'system-images/android-29/google_apis/x86_64',
+    'system-images/android-36/android-tv/x86_64'
 )
 $avds = @(
     @{ Name = 'ag37'; Image = 'system-images;android-37.0;google_apis;x86_64'; Device = 'pixel_8' },
-    @{ Name = 'ag29'; Image = 'system-images;android-29;google_apis;x86_64'; Device = 'pixel_4' }
+    @{ Name = 'ag29'; Image = 'system-images;android-29;google_apis;x86_64'; Device = 'pixel_4' },
+    @{ Name = 'agtv'; Image = 'system-images;android-36;android-tv;x86_64'; Device = 'tv_1080p' }
 )
 
 function Expand-Download([string]$url, [string]$destination) {

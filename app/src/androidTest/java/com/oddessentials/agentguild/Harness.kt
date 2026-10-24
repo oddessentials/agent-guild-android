@@ -13,6 +13,7 @@ import com.oddessentials.agentguild.model.Json
 import com.oddessentials.agentguild.model.SignInLink
 import com.oddessentials.agentguild.web.LinkOpener
 import com.oddessentials.agentguild.web.PageEvents
+import com.oddessentials.agentguild.web.TvCheck
 import com.oddessentials.agentguild.web.WebViewSupport
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -38,6 +39,7 @@ class Harness(private val compose: ComposeTestRule) {
     init {
         runBlocking { app.store.current().forEach { app.store.remove(it.id) } }
         app.webViewSupport = WebViewSupport.System
+        app.tv = TvCheck.System
         app.links = LinkOpener { _: Context, url -> opened += url }
         app.events = object : PageEvents {
             override fun ready(version: String) {
@@ -63,6 +65,7 @@ class Harness(private val compose: ComposeTestRule) {
         app.links = LinkOpener.CustomTabs
         app.events = PageEvents.None
         app.webViewSupport = WebViewSupport.System
+        app.tv = TvCheck.System
         runBlocking { app.store.current().forEach { app.store.remove(it.id) } }
     }
 

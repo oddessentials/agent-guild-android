@@ -9,6 +9,7 @@ import com.oddessentials.agentguild.data.ComputerStore
 import com.oddessentials.agentguild.model.SignInLink
 import com.oddessentials.agentguild.web.LinkOpener
 import com.oddessentials.agentguild.web.PageEvents
+import com.oddessentials.agentguild.web.TvCheck
 import com.oddessentials.agentguild.web.WebViewSupport
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +22,7 @@ class AgentGuildApp : Application() {
 
     // Instrumented tests replace these before starting the activity.
     var webViewSupport: WebViewSupport = WebViewSupport.System
+    var tv: TvCheck = TvCheck.System
     var links: LinkOpener = LinkOpener.CustomTabs
     var events: PageEvents = PageEvents.None
 

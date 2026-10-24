@@ -2,6 +2,7 @@ package com.oddessentials.agentguild.web
 
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.webkit.WebViewCompat
@@ -17,6 +18,22 @@ interface WebViewSupport {
         override fun supportsMessageListener() = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
 
         override fun version(context: Context) = WebViewCompat.getCurrentWebViewPackage(context)?.versionName
+    }
+}
+
+/** Whether the app shows the TV board, behind an interface so tests can choose. */
+fun interface TvCheck {
+    fun isTv(context: Context): Boolean
+
+    companion object {
+        private const val FIRE_TV_FEATURE = "amazon.hardware.fire_tv"
+
+        val System = TvCheck { context ->
+            isTv(context.resources.configuration.uiMode, context.packageManager.hasSystemFeature(FIRE_TV_FEATURE))
+        }
+
+        fun isTv(uiMode: Int, fireTv: Boolean) =
+            fireTv || (uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
     }
 }
 

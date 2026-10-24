@@ -35,6 +35,7 @@ class PageWeb(
     private val context: Context,
     val page: Page,
     initialView: PageView,
+    private val compact: Boolean,
     private val links: LinkOpener,
     private val events: PageEvents,
     private val microphone: MicrophoneAccess,
@@ -82,7 +83,7 @@ class PageWeb(
         left = false
         finished = false
         loadedView = shownView
-        view.loadUrl(page.url(shownView))
+        view.loadUrl(page.url(shownView, compact))
     }
 
     private fun dispose(view: WebView) {
@@ -92,7 +93,7 @@ class PageWeb(
     }
 
     private fun openOutside(url: String) {
-        if (Navigation.mayOpenOutside(url, page.token)) links.open(context, url)
+        if (!compact && Navigation.mayOpenOutside(url, page.token)) links.open(context, url)
     }
 
     @SuppressLint("SetJavaScriptEnabled", "RequiresFeature")
@@ -167,6 +168,7 @@ class PageWeb(
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?) = false
 
             override fun onPermissionRequest(request: PermissionRequest) {
+                if (compact) return request.deny()
                 val decision = Microphone.decide(request.resources.toList(), request.origin?.toString(), page.origin, microphone.granted())
                 when (decision) {
                     MicrophoneDecision.Grant -> request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))

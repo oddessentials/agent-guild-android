@@ -2,6 +2,8 @@ package com.oddessentials.agentguild.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -37,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -58,12 +61,14 @@ import com.oddessentials.agentguild.web.PageWeb
 /**
  * A computer's page, or the demo. A saved computer is checked whenever the screen resumes: a
  * rejected token or a changed address offers to sign in again, and other failures keep the page
- * with a banner.
+ * with a banner. On a TV, the page is the compact Yard, full screen, and Back closes the app.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: String, scan: Boolean) -> Unit) {
-    val app = LocalContext.current.app
+    val context = LocalContext.current
+    val app = context.app
+    val tv = remember { app.tv.isTv(context) }
     val computers by app.store.computers.collectAsState(initial = null)
     val computer = (destination as? Destination.Saved)?.let { saved -> computers?.firstOrNull { it.id == saved.id } }
     val page = when (destination) {
@@ -72,7 +77,7 @@ fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: Stri
     }
     // Saved with this window's state.
     var viewValue by rememberSaveable { mutableStateOf(PageView.Yard.value) }
-    val view = PageView.of(viewValue) ?: PageView.Yard
+    val view = if (tv) PageView.Yard else PageView.of(viewValue) ?: PageView.Yard
 
     var attempt by remember { mutableIntStateOf(0) }
     var checked by remember(page) { mutableStateOf(false) }
@@ -85,10 +90,12 @@ fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: Stri
         problem = (result as? HealthResult.Failed)?.problem
     }
     val showsPage = page != null && (destination == Destination.Demo || checked)
+    val activity = LocalActivity.current
+    BackHandler(enabled = tv && showsPage) { activity?.finish() }
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (!tv) TopAppBar(
                 title = { Text(if (destination == Destination.Demo) "Demo" else computer?.name ?: "Agent Guild", maxLines = 1) },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
                 actions = {
@@ -114,7 +121,7 @@ fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: Stri
                 page == null -> if (computers != null) Message("This computer was removed.")
                 showsPage -> Column(Modifier.fillMaxSize()) {
                     problem?.let { Banner(it.message) }
-                    WebPage(page, view, Modifier.weight(1f))
+                    WebPage(page, view, compact = tv, Modifier.weight(1f))
                 }
                 problem != null -> CantConnect(
                     problem!!,
@@ -135,7 +142,7 @@ fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: Stri
 }
 
 @Composable
-private fun WebPage(page: Page, view: PageView, modifier: Modifier) {
+private fun WebPage(page: Page, view: PageView, compact: Boolean, modifier: Modifier) {
     val context = LocalContext.current
     val app = context.app
     var pendingMicrophone by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
@@ -145,7 +152,7 @@ private fun WebPage(page: Page, view: PageView, modifier: Modifier) {
     }
     val web = remember(page) {
         PageWeb(
-            context, page, view, app.links, app.events,
+            context, page, view, compact, app.links, app.events,
             object : PageWeb.MicrophoneAccess {
                 override fun granted() =
                     ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -164,7 +171,7 @@ private fun WebPage(page: Page, view: PageView, modifier: Modifier) {
     }
     LaunchedEffect(web, view) { web.show(view) }
 
-    Box(modifier.fillMaxWidth()) {
+    Box(modifier.fillMaxWidth().then(if (compact) Modifier.keepScreenOn() else Modifier)) {
         web.webView?.let { webView ->
             key(webView) { AndroidView({ webView }, Modifier.fillMaxSize().testTag("page")) }
         }

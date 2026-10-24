@@ -45,7 +45,7 @@ agent-guild's `docs/api.md`, **The page in the Agent Guild app → Android**, is
 
 The page needs agent-guild's change "feat: support Agent Guild in the Android app web view". The app's minimum Agent Guild version is the first release that carries it, 1.9.0 (`Health.MINIMUM_VERSION`). A development build reports `0.0.0-development` and is accepted, as the Apple app does.
 
-The app accepts `ready` and `open`. It ignores `expand`, which only the compact layout sends, and `look`, which only a framed page sends; the app loads neither.
+The app accepts `ready` and `open`, and ignores `expand` and `look`.
 
 ## WebView security
 
@@ -99,7 +99,7 @@ The app's instrumented tests then checked these on `ag37`:
 | compileSdk, targetSdk | 37 |
 | minSdk | 29 (Android 10), with the `WEB_MESSAGE_LISTENER` check at startup |
 | Build tools | 37.0.0 |
-| Emulator images | `google_apis` x86_64 for API 37.0 (`ag37`) and API 29 (`ag29`) |
+| Emulator images | `google_apis` x86_64 for API 37.0 (`ag37`) and API 29 (`ag29`), and `android-tv` x86_64 for API 36 (`agtv`) |
 | Kotlin | 2.2.10, the version the Android Gradle Plugin brings; the Compose compiler plugin matches it |
 | Compose BOM | 2026.09.00, with Activity Compose 1.13.0 and Lifecycle Compose 2.10.0 |
 | CameraX | 1.6.2 |
@@ -115,7 +115,7 @@ Versions are in `gradle/libs.versions.toml`. Espresso is named because Compose's
 Windows, in PowerShell 7. Everything installs into user folders, without administrator rights. The emulator needs the Windows Hypervisor Platform; `setup.ps1` ends with `emulator -accel-check`, which says whether it is usable.
 
 ```powershell
-pwsh tools/emulator/setup.ps1                       # JDK, Gradle, SDK packages, ag37 and ag29; skips what is there
+pwsh tools/emulator/setup.ps1                       # JDK, Gradle, SDK packages, ag37, ag29 and agtv; skips what is there
 . tools/emulator/env.ps1                            # puts them on PATH in this session
 pwsh tools/emulator/start.ps1 -Avd ag37 -Tailnet    # headless; -Window to watch it; -Port for a second emulator
 pwsh tools/emulator/stop.ps1                        # -Port to match start.ps1
@@ -188,6 +188,7 @@ $token = (Get-Content <scratch folder>/auth-token).Trim()
 - `SignInTest`, `PageTest` and `QrTest` use the scratch manager: sign-in by link, a rejected token, loading, `ready`, the token leaving the address, view switching, a link opening outside, a navigation elsewhere cancelled, `window.open` refused, a new `WebView` after the renderer is terminated, and a sign-in QR code drawn by the manager's own `paintQr` and read through ML Kit.
 - `HostileTest` stages what the real manager can't with two servers inside the test process on the device's loopback interface, ports 47941 and 47942: a redirect to another origin, a form posted to another origin, a microphone request from a frame of another origin, and a manager whose `/api/v1/info` answer changes before `ON_RESUME`.
 - `StartupTest` replaces the feature check; `StoreTest` uses the Android Keystore. These two and `HealthCheckDeviceTest` need no WebView feature, so they also run on `ag29`.
+- `TvTest` replaces the TV check, so it runs anywhere. `TvRemoteTest` drives the app with remote keys and runs only on a TV such as `agtv`; CI doesn't run it, and elsewhere it is skipped.
 - Waits go through the Compose test rule: its clock advances only while the rule synchronizes, so a test thread that blocks any other way stops the screens from changing.
 
 ### Later
