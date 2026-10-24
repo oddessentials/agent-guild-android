@@ -28,15 +28,15 @@ function java(tool) {
   return process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', tool + exe) : tool;
 }
 
-function run(file, args) {
+function run(file, args, name = path.basename(file)) {
   try {
     return execFileSync(file, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
-    throw new Error(`${path.basename(file)} ${args[0]} failed:\n${err.stdout ?? ''}${err.stderr ?? err.message}`);
+    throw new Error(`${name} failed:\n${err.stdout ?? ''}${err.stderr ?? err.message}`);
   }
 }
 
-const apksigner = (...args) => run(java('java'), ['-jar', path.join(buildTools(), 'lib', 'apksigner.jar'), ...args]);
+const apksigner = (...args) => run(java('java'), ['-jar', path.join(buildTools(), 'lib', 'apksigner.jar'), ...args], `apksigner ${args[0]}`);
 
 function requirePassword() {
   if (!process.env[PASSWORD]) throw new Error(`${PASSWORD} must hold the keystore's password`);
