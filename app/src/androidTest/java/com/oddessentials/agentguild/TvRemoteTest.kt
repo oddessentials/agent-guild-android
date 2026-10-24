@@ -152,7 +152,8 @@ class TvRemoteTest {
     fun theRemoteChoosesASkinFromTheList() {
         val scratch = harness.addManager("Scratch")
         val scenario = harness.launch()
-        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasContentDescription("More for Scratch"))
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("computer:Scratch"))
+        moveTo(KeyEvent.KEYCODE_DPAD_RIGHT, hasContentDescription("More for Scratch"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasText("Skin and Theme"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
@@ -167,7 +168,8 @@ class TvRemoteTest {
         compose.onNodeWithTag("skin:grove").assertIsSelected()
         moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("theme:dark"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("look-save"))
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("look-cancel"))
+        moveTo(KeyEvent.KEYCODE_DPAD_RIGHT, hasTestTag("look-save"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
 
         compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-panel") == 0 }

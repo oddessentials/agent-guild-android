@@ -88,11 +88,8 @@ fun ComputerList(onOpen: (Destination) -> Unit, onLook: (Destination) -> Unit, o
             }
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
             item {
-                Row(
-                    Modifier.fillMaxWidth().clickable { onOpen(Destination.Demo) }.padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).clickable { onOpen(Destination.Demo) }.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Text("Try the demo", style = MaterialTheme.typography.bodyLarge)
                         Text("Simulated sessions, with no computer needed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -113,11 +110,9 @@ fun ComputerList(onOpen: (Destination) -> Unit, onLook: (Destination) -> Unit, o
 
 @Composable
 private fun ComputerRow(computer: Computer, onOpen: () -> Unit, onLook: (() -> Unit)?, onRename: () -> Unit, onSignIn: () -> Unit, onRemove: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().testTag("computer:${computer.name}").clickable(onClick = onOpen).padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
+    // The ⋮ menu sits beside the part that opens the computer, not inside it, so the remote can reach it.
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).testTag("computer:${computer.name}").clickable(onClick = onOpen).padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text(computer.name, style = MaterialTheme.typography.bodyLarge)
             Text(Origin.parse(computer.address)?.host ?: computer.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
