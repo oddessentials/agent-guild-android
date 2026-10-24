@@ -1,0 +1,234 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, unit tests and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21.0.12+1.1
+          cache: gradle
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'platforms;android-37.0' 'build-tools;37.0.0' > /dev/null
+      # A release builds its own version; any other build is 0.0.0-development.
+      - env:
+          VERSION: ${{ inputs.version }}
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleRelease ${VERSION:+"-PagentGuildVersion=$VERSION"}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apk-unsigned
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 7
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-reports
+          path: app/build/reports/
+          retention-days: 7
+
+  # Signs and checks the APK the way a release does, with a key made for this job and then discarded.
+  signing:
+    name: Signing (disposable key)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/release
+            tests/release
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21.0.12+1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'build-tools;37.0.0' > /dev/null
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: apk-unsigned
+          path: ${{ runner.temp }}/unsigned
+      - env:
+          VERSION: ${{ inputs.version || '0.0.0-development' }}
+        run: |
+          RELEASE_KEYSTORE_PASSWORD=$(openssl rand -hex 24)
+          echo "::add-mask::$RELEASE_KEYSTORE_PASSWORD"
+          export RELEASE_KEYSTORE_PASSWORD
+          node tools/release/apk.mjs disposable-key "$RUNNER_TEMP/disposable.p12"
+          node tools/release/apk.mjs sign "$RUNNER_TEMP/unsigned/app-release-unsigned.apk" "$RUNNER_TEMP/signed.apk" \
+            --keystore "$RUNNER_TEMP/disposable.p12" --version "$VERSION"
+          node tests/release/apk.mjs "$RUNNER_TEMP/unsigned/app-release-unsigned.apk" "$VERSION"
+          rm -f "$RUNNER_TEMP/disposable.p12"
+
+  plan:
+    name: Release plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: .github/release/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: .github/release
+      - run: node tests/release/plan.mjs
+      - run: node tests/release/publish.mjs
+
+  # The suite runs against a scratch manager of the minimum Agent Guild version the app supports.
+  device:
+    name: Instrumented tests (API 37)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AGENT_GUILD_PORT: '47931'
+      AGENT_GUILD_NO_UPDATE_CHECK: '1'
+      MANAGER_VERSION: 1.9.0
+    steps:
+      - run: |
+          {
+            echo "AGENT_GUILD_HOME=$RUNNER_TEMP/agent-guild-home"
+            echo "MANAGER=$RUNNER_TEMP/manager/node_modules/@oddessentials/agent-guild/bin/agent-guild.mjs"
+            echo "MANAGER_LOG=$RUNNER_TEMP/manager.log"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21.0.12+1.1
+          cache: gradle
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'platforms;android-37.0' 'build-tools;37.0.0' > /dev/null
+      # The manager prints its sign-in link, token included, so its output goes only to MANAGER_LOG.
+      - name: Start the scratch manager
+        run: |
+          npm install --prefix "$RUNNER_TEMP/manager" --no-audit --no-fund "@oddessentials/agent-guild@$MANAGER_VERSION"
+          nohup node "$MANAGER" start > "$MANAGER_LOG" 2>&1 &
+          deadline=$((SECONDS + 60))
+          until health=$(curl -sf "http://127.0.0.1:$AGENT_GUILD_PORT/api/v1/health"); do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              sed -E 's/[0-9a-f]{32,}/<token>/g' "$MANAGER_LOG"
+              echo "::error::The scratch manager did not answer within a minute."
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "$health"
+          token=$(cat "$AGENT_GUILD_HOME/auth-token")
+          echo "::add-mask::$token"
+          echo "MANAGER_TOKEN=$token" >> "$GITHUB_ENV"
+        timeout-minutes: 5
+      # Built before the emulator starts, so the emulator is not left waiting on the compiler.
+      - run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: '37.0'
+          target: google_apis
+          arch: x86_64
+          profile: pixel_8
+          emulator-build: '16428233'
+          emulator-options: -no-window -no-snapshot -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
+          script: |
+            adb reverse tcp:47931 tcp:47931
+            bash tools/ci/device-tests.sh "$RUNNER_TEMP/diagnostics"
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: diagnostics-api-37
+          path: ${{ runner.temp }}/diagnostics/
+          retention-days: 7
+      - if: always()
+        run: node "$MANAGER" stop || true
+
+  # The tests that need no new WebView feature, on Android 10, the app's minimum.
+  device-29:
+    name: Instrumented tests (API 29)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21.0.12+1.1
+          cache: gradle
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'platforms;android-37.0' 'build-tools;37.0.0' > /dev/null
+      - run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          emulator-build: '16428233'
+          emulator-options: -no-window -no-snapshot -gpu swiftshader_indirect -noaudio -no-boot-anim -no-metrics
+          # One class per run: the Android Gradle Plugin keeps only the first of a comma-separated list.
+          script: |
+            bash tools/ci/device-tests.sh "$RUNNER_TEMP/diagnostics" -Pandroid.testInstrumentationRunnerArguments.class=com.oddessentials.agentguild.StartupTest
+            bash tools/ci/device-tests.sh "$RUNNER_TEMP/diagnostics" -Pandroid.testInstrumentationRunnerArguments.class=com.oddessentials.agentguild.StoreTest
+            bash tools/ci/device-tests.sh "$RUNNER_TEMP/diagnostics" -Pandroid.testInstrumentationRunnerArguments.class=com.oddessentials.agentguild.HealthCheckDeviceTest
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: diagnostics-api-29
+          path: ${{ runner.temp }}/diagnostics/
+          retention-days: 7
+
+  required:
+    name: Required checks
+    if: always()
+    needs: [build, signing, plan, device, device-29]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          BUILD: ${{ needs.build.result }}
+          SIGNING: ${{ needs.signing.result }}
+          PLAN: ${{ needs.plan.result }}
+          DEVICE: ${{ needs.device.result }}
+          DEVICE_29: ${{ needs.device-29.result }}
+        run: |
+          echo "build: $BUILD, signing: $SIGNING, plan: $PLAN, device: $DEVICE, device-29: $DEVICE_29"
+          [ "$BUILD" = success ] && [ "$SIGNING" = success ] && [ "$PLAN" = success ] && [ "$DEVICE" = success ] && [ "$DEVICE_29" = success ]

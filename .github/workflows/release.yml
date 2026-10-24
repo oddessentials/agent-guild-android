@@ -1,0 +1,162 @@
+name: Release
+
+# A push to main releases when its Conventional Commit title calls for one. Run by hand on main, it
+# builds and signs with the release key but publishes nothing; the signed APK stays a workflow artifact.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: .github/release/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: .github/release
+      - id: plan
+        env:
+          RELEASE_PLAN_DIR: ${{ runner.temp }}/release-plan
+        run: |
+          git clone --quiet --bare . "$RUNNER_TEMP/origin.git"
+          node .github/release/node_modules/semantic-release/bin/semantic-release.js --dry-run --repository-url "file://$RUNNER_TEMP/origin.git"
+          if [ -f "$RELEASE_PLAN_DIR/version" ]; then
+            version=$(cat "$RELEASE_PLAN_DIR/version")
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::The planned version \"$version\" is not a plain release version."
+              exit 1
+            fi
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.plan.outputs.version != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}/release-plan/notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  ci:
+    name: CI
+    needs: plan
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+
+  # The only job that sees the release key. The release-signing environment admits main alone, and
+  # this job runs no Gradle: it signs the APK the CI build made, and checks it.
+  sign:
+    name: Sign with the release key
+    needs: [plan, ci]
+    if: needs.plan.outputs.version != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release-signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21.0.12+1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'build-tools;37.0.0' > /dev/null
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: apk-unsigned
+          path: ${{ runner.temp }}/unsigned
+      - env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          CERT_SHA256: ${{ vars.RELEASE_CERT_SHA256 }}
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$CERT_SHA256" ] || [ -z "$RELEASE_KEYSTORE_BASE64" ] || [ -z "$RELEASE_KEYSTORE_PASSWORD" ]; then
+            echo "::error::Signing needs the RELEASE_CERT_SHA256 variable, and the RELEASE_KEYSTORE_BASE64 and RELEASE_KEYSTORE_PASSWORD secrets of the release-signing environment."
+            exit 1
+          fi
+          keystore="$RUNNER_TEMP/release.p12"
+          trap 'rm -f "$keystore"' EXIT
+          (umask 077 && printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$keystore")
+          apk="agent-guild-$VERSION.apk"
+          mkdir "$RUNNER_TEMP/release"
+          node tools/release/apk.mjs sign "$RUNNER_TEMP/unsigned/app-release-unsigned.apk" "$RUNNER_TEMP/release/$apk" \
+            --keystore "$keystore" --version "$VERSION" --cert-sha256 "$CERT_SHA256"
+          cd "$RUNNER_TEMP/release"
+          sha256sum -- "$apk" > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-apk
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 30
+
+  # Publishes the files the sign job checked, after checking them again. publish.mjs keeps the
+  # release a draft until GitHub holds exactly these files, and a re-run finishes what a failed run left.
+  release:
+    name: Publish the release
+    needs: [plan, sign]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21.0.12+1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'build-tools;37.0.0' > /dev/null
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-apk
+          path: ${{ runner.temp }}/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}/plan
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          CERT_SHA256: ${{ vars.RELEASE_CERT_SHA256 }}
+        run: |
+          apk="agent-guild-$VERSION.apk"
+          (cd "$RUNNER_TEMP/release" && sha256sum --check SHA256SUMS)
+          node tools/release/apk.mjs verify "$RUNNER_TEMP/release/$apk" --version "$VERSION" --cert-sha256 "$CERT_SHA256"
+          {
+            cat "$RUNNER_TEMP/plan/notes.md"
+            echo
+            echo "SHA-256 of \`$apk\`: \`$(cut -d ' ' -f 1 "$RUNNER_TEMP/release/SHA256SUMS")\`"
+          } > "$RUNNER_TEMP/notes.md"
+          node tools/release/publish.mjs --repo "$GITHUB_REPOSITORY" --tag "v$VERSION" --sha "$GITHUB_SHA" \
+            --notes "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/release"
