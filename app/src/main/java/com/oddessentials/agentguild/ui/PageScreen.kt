@@ -200,7 +200,13 @@ private fun WebPage(
     SideEffect { web.look = look }
     val currentLook by rememberUpdatedState(look)
     val scope = rememberCoroutineScope()
-    val chooser = remember(web) { LookChooser(web, scope) { app.looks.set(lookKey, it) } }
+    val chooser = remember(web) {
+        LookChooser(web, scope) { saved ->
+            app.looks.set(lookKey, saved)
+            // At once, so a load that starts before the store's next value uses it.
+            web.look = saved
+        }
+    }
     LaunchedEffect(chooser, web.loads) { chooser.loadChanged(web.loads) }
     if (compact) {
         LaunchedEffect(chooser, lookRequested, web.loaded) {

@@ -26,8 +26,12 @@ data class Look(val skin: String? = null, val theme: Theme = Theme.System) {
     }
 }
 
-/** What a loaded page shows: the skins it offers, and the skin and theme on its `<html>`. */
-data class PageLook(val skins: List<Skin>, val skin: String?, val theme: Theme?)
+/**
+ * What a loaded page shows: the skins it offers, and the skin and theme on its `<html>`. [skin] is
+ * the shown skin when it is one of [skins]; [shownSkin] is the shown skin's id whenever it is a valid
+ * one, so Cancel can put it back even when the list left it out.
+ */
+data class PageLook(val skins: List<Skin>, val skin: String?, val theme: Theme?, val shownSkin: String? = skin)
 
 /**
  * The page's side of a [Look]. Skin ids and names come from the page, so they are checked here
@@ -62,8 +66,9 @@ object Looks {
             .distinctBy { it.id }
             .take(MAX_SKINS)
             .toList()
-        val skin = (root["skin"] as? String)?.takeIf { shown -> skins.any { it.id == shown } }
-        return PageLook(skins, skin, Theme.explicit(root["theme"] as? String))
+        val shown = (root["skin"] as? String)?.takeIf(::isSkinId)
+        val skin = shown?.takeIf { id -> skins.any { it.id == id } }
+        return PageLook(skins, skin, Theme.explicit(root["theme"] as? String), shown)
     }
 
     /**

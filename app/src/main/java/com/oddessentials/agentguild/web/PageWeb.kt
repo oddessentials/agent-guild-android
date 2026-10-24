@@ -36,6 +36,21 @@ import com.oddessentials.agentguild.model.Theme
  * The `WebView` that shows one [Page], with the bridge and the rules of the README's "WebView
  * security". It loads only [Page.url], and keeps its main frame on the page's origin.
  */
+/** What the TV's Skin and Theme panel needs from the page, so its rules can be tested without a `WebView`. */
+interface LookPage {
+    /** Counts the page's documents; an answer counts only for the one that asked. */
+    val loads: Int
+
+    /** The current document finished loading. */
+    val loaded: Boolean
+
+    /** The skins the page offers and the look it shows, for document [load] only. */
+    fun readLook(load: Int, result: (PageLook?) -> Unit)
+
+    /** Shows [skin] and [theme] in document [load], without loading it again. False when that document has gone. */
+    fun preview(load: Int, skin: String?, theme: Theme): Boolean
+}
+
 class PageWeb(
     private val context: Context,
     val page: Page,
@@ -46,7 +61,7 @@ class PageWeb(
     private val links: LinkOpener,
     private val events: PageEvents,
     private val microphone: MicrophoneAccess,
-) {
+) : LookPage {
     interface MicrophoneAccess {
         fun granted(): Boolean
 
@@ -63,14 +78,15 @@ class PageWeb(
         private set
 
     /**
-     * Counts loads, and the `WebView`'s end. A script's answer counts only for the load that asked,
-     * so one from an earlier load, or from a `WebView` since destroyed, is dropped.
+     * Counts the app's loads, every main-frame document the page starts itself, and the `WebView`'s
+     * end. A script's answer counts only for the document that asked, so one from an earlier
+     * document, or from a `WebView` since destroyed, is dropped.
      */
-    var loads by mutableIntStateOf(0)
+    override var loads by mutableIntStateOf(0)
         private set
 
-    /** The current load finished on the manager's origin. */
-    var loaded by mutableStateOf(false)
+    /** The current document finished loading on the manager's origin. */
+    override var loaded by mutableStateOf(false)
         private set
 
     private var shownView = initialView
@@ -91,8 +107,7 @@ class PageWeb(
         if (loaded) webView?.evaluateJavascript(Bridge.viewScript(view), null)
     }
 
-    /** The skins the page offers and the look it shows, for the current load only. */
-    fun readLook(load: Int, result: (PageLook?) -> Unit) {
+    override fun readLook(load: Int, result: (PageLook?) -> Unit) {
         val view = webView ?: return
         if (!loaded || load != loads) return
         view.evaluateJavascript(Looks.READ_SCRIPT) { json ->
@@ -100,8 +115,7 @@ class PageWeb(
         }
     }
 
-    /** Shows [skin] and [theme] in the page of [load], without loading it again. False when that load has ended. */
-    fun preview(load: Int, skin: String?, theme: Theme): Boolean {
+    override fun preview(load: Int, skin: String?, theme: Theme): Boolean {
         val view = webView ?: return false
         if (!loaded || load != loads) return false
         view.evaluateJavascript(Looks.previewScript(skin, theme), null)
@@ -183,6 +197,10 @@ class PageWeb(
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                if (view === webView) {
+                    loads++
+                    loaded = false
+                }
                 if (!Navigation.staysOnManager(url, page.origin)) {
                     view.stopLoading()
                     left = true

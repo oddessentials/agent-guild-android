@@ -10,7 +10,6 @@ import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.datastore.core.Serializer
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -18,21 +17,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebViewCompat
 import com.oddessentials.agentguild.Harness.Companion.evaluate
 import com.oddessentials.agentguild.Harness.Companion.evaluateString
-import com.oddessentials.agentguild.data.LookSerializer
-import com.oddessentials.agentguild.data.LookStore
 import com.oddessentials.agentguild.model.Computer
 import com.oddessentials.agentguild.model.Look
 import com.oddessentials.agentguild.model.Looks
 import com.oddessentials.agentguild.model.Theme
 import com.oddessentials.agentguild.web.TvCheck
-import java.io.File
-import java.io.IOException
-import java.io.OutputStream
-import java.util.UUID
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -56,17 +45,7 @@ class TvLookTest {
     private val manager = FakeServer(47941)
     private val token = "0123456789abcdef0123456789abcdef"
     private lateinit var computer: Computer
-    private val scopes = mutableListOf<CoroutineScope>()
-
-    /** [LookSerializer], with writes that fail while [failing] is true. */
-    private class Failing : Serializer<Map<String, Look>> by LookSerializer {
-        @Volatile var failing = false
-
-        override suspend fun writeTo(t: Map<String, Look>, output: OutputStream) {
-            if (failing) throw IOException("disk full")
-            LookSerializer.writeTo(t, output)
-        }
-    }
+    private val failing = mutableListOf<FailingLooks>()
 
     @Before
     fun setUp() {
@@ -81,9 +60,6 @@ class TvLookTest {
               root.dataset.skin = agentGuildSkins.some((s) => s.id === params.get('skin')) ? params.get('skin') : 'professional';
               const asked = params.get('theme');
               root.dataset.theme = asked === 'light' || asked === 'dark' ? asked : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-              window.keys = [];
-              addEventListener('keydown', (event) => keys.push(event.keyCode));
-              addEventListener('keyup', (event) => keys.push(event.keyCode));
               window.agentGuild.postMessage(JSON.stringify({ source: 'agent-guild', type: 'ready', version: '1.9.0' }));
             </script>""",
         )
@@ -95,18 +71,16 @@ class TvLookTest {
     fun tearDown() {
         manager.close()
         harness.close()
-        scopes.forEach { it.cancel() }
+        failing.forEach { it.close() }
     }
 
     private fun saveLook(look: Look, key: String = computer.id) = runBlocking { harness.app.looks.set(key, look) }
 
     private fun savedLook(key: String = computer.id) = runBlocking { harness.app.looks.current()[key] }
 
-    private fun failingLooks(): Failing {
-        val serializer = Failing()
-        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob()).also { scopes += it }
-        harness.app.looks = LookStore.create(File(harness.app.cacheDir, "looks-${UUID.randomUUID()}.json"), scope, serializer)
-        return serializer
+    private fun failingLooks() = FailingLooks(harness.app).also {
+        failing += it
+        harness.app.looks = it.store
     }
 
     private fun openBoard(): Pair<ActivityScenario<MainActivity>, android.webkit.WebView> {
@@ -238,7 +212,7 @@ class TvLookTest {
     @Test
     fun lightThenSystemThenCancelRemovesTheOverrideThenPutsLightBack() {
         saveLook(Look(theme = Theme.Light))
-        val (_, web) = openBoard()
+        val (scenario, web) = openBoard()
         assertTrue(evaluateString(web, "location.hash")!!.contains("&theme=light&"))
         systemIsDark(web, true)
         openPanel()
@@ -249,6 +223,10 @@ class TvLookTest {
         untilPanelCloses()
         harness.untilTrue(web, "document.documentElement.dataset.theme === 'light'")
         assertEquals(Look(theme = Theme.Light), savedLook())
+
+        val (_, again) = relaunchBoard(scenario)
+        assertEquals("#token=$token&layout=compact&expand=none&theme=light&view=yard", evaluateString(again, "location.hash"))
+        assertEquals("light", theme(again))
     }
 
     @Test
@@ -308,19 +286,54 @@ class TvLookTest {
         assertEquals(Look("grove"), savedLook())
     }
 
+    /** Lets every answer the page owes the app arrive: the page answers scripts in order. */
+    private fun settle(web: android.webkit.WebView) {
+        evaluate(web, "true")
+        compose.waitForIdle()
+    }
+
+    /** Whether the activity takes [event], as it does before any view sees it. */
+    private fun taken(scenario: ActivityScenario<MainActivity>, event: KeyEvent): Boolean {
+        var taken = false
+        scenario.onActivity { taken = it.dispatchKeyEvent(event) }
+        return taken
+    }
+
+    private fun menu(action: Int, repeat: Int = 0) = KeyEvent(0, 0, action, KeyEvent.KEYCODE_MENU, repeat)
+
     @Test
-    fun aHeldMenuKeyActsOnceAndNeverReachesThePage() {
+    fun aHeldMenuKeyActsOnce() {
         val (_, web) = openBoard()
+
+        // Held over the open panel, Menu closes it once: a repeat acting would open it again.
+        openPanel()
         key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MENU)
         key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MENU, repeat = 1)
         key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MENU, repeat = 2)
         key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MENU)
+        settle(web)
+        assertFalse(panelShown())
+
+        // Held over the Yard, it opens the panel once: a repeat acting would close it.
+        key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MENU)
         compose.waitUntil(10_000) { panelShown() }
-        compose.waitForIdle()
+        key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MENU, repeat = 1)
+        key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MENU, repeat = 2)
+        key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MENU)
+        settle(web)
         assertTrue(panelShown())
         pressMenu()
         untilPanelCloses()
-        assertEquals("[]", evaluateString(web, "JSON.stringify(window.keys)"))
+    }
+
+    /** The page can't see a key the activity takes. Android's WebView doesn't pass Menu on either. */
+    @Test
+    fun theTvPageTakesEveryMenuEventItActsOn() {
+        val (scenario, _) = openBoard()
+        assertTrue(taken(scenario, menu(KeyEvent.ACTION_DOWN)))
+        assertTrue(taken(scenario, menu(KeyEvent.ACTION_DOWN, repeat = 1)))
+        assertTrue(taken(scenario, menu(KeyEvent.ACTION_UP)))
+        compose.waitUntil(10_000) { panelShown() }
     }
 
     @Test
@@ -337,6 +350,7 @@ class TvLookTest {
         untilPanelCloses()
         assertEquals("grove", skin(second))
         assertEquals(Look("grove"), savedLook())
+        compose.waitUntil(5_000) { harness.webViewHasFocus(scenario) }
         openPanel()
         compose.onNodeWithTag("skin:grove").assertIsSelected()
     }

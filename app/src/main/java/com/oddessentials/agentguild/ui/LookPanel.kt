@@ -37,17 +37,18 @@ import androidx.compose.ui.unit.dp
 import com.oddessentials.agentguild.model.Look
 import com.oddessentials.agentguild.model.PageLook
 import com.oddessentials.agentguild.model.Theme
+import com.oddessentials.agentguild.web.LookPage
 import com.oddessentials.agentguild.web.PageWeb
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * The Skin and Theme panel's state for one [PageWeb]. It belongs to the load it opened on: a new
- * load closes it, and drops any unsaved preview, since the page then loads the saved look.
+ * The Skin and Theme panel's state for one page. It belongs to the document it opened on: a new
+ * one closes it, and drops any unsaved preview, since the page then loads the saved look.
  */
 @Stable
-class LookChooser(private val web: PageWeb, private val scope: CoroutineScope, private val save: suspend (Look) -> Unit) {
+class LookChooser(private val web: LookPage, private val scope: CoroutineScope, private val save: suspend (Look) -> Unit) {
     /** What the page offered and showed when the panel opened; null while it is closed. */
     var page by mutableStateOf<PageLook?>(null)
         private set
@@ -94,7 +95,7 @@ class LookChooser(private val web: PageWeb, private val scope: CoroutineScope, p
     fun cancel() {
         val shown = page ?: return
         if (saving) return
-        web.preview(load, shown.skin, shown.theme ?: Theme.System)
+        web.preview(load, shown.shownSkin, shown.theme ?: Theme.System)
         close()
     }
 
@@ -145,7 +146,8 @@ fun LookPanel(chooser: LookChooser, web: PageWeb, modifier: Modifier = Modifier)
     val firstTheme = remember { chooser.theme }
     BackHandler { chooser.cancel() }
     LaunchedEffect(Unit) { first.requestFocus() }
-    DisposableEffect(Unit) { onDispose { web.webView?.requestFocus() } }
+    // Posted, so a new WebView, after the renderer went away, gets it once it is attached.
+    DisposableEffect(Unit) { onDispose { web.webView?.let { view -> view.post { view.requestFocus() } } } }
 
     Surface(
         modifier

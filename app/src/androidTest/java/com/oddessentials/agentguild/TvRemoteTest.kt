@@ -214,4 +214,28 @@ class TvRemoteTest {
         press(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(10_000) { scenario.state == Lifecycle.State.DESTROYED }
     }
+
+    @Test
+    fun aFailedSaveKeepsTheFocusOnSave() {
+        val looks = FailingLooks(harness.app)
+        try {
+            harness.app.looks = looks.store
+            looks.failing = true
+            val (scenario, _) = openScratch()
+            press(KeyEvent.KEYCODE_MENU)
+            compose.waitUntil(10_000) { focusInPanel() }
+            moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("look-cancel"))
+            moveTo(KeyEvent.KEYCODE_DPAD_RIGHT, hasTestTag("look-save"))
+            press(KeyEvent.KEYCODE_DPAD_CENTER)
+            compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-error") == 1 }
+            assertTrue(isFocused(hasTestTag("look-save")))
+
+            press(KeyEvent.KEYCODE_BACK)
+            compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-panel") == 0 }
+            compose.waitUntil(5_000) { harness.webViewHasFocus(scenario) }
+            assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
+        } finally {
+            looks.close()
+        }
+    }
 }

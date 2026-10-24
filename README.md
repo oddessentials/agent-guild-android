@@ -55,7 +55,7 @@ The compact page keeps no skin or theme of its own, so on a TV the app chooses t
 - Each choice shows at once: the app sets `data-skin` and `data-theme` on the page, which the Yard redraws on, and loads nothing. A skin the page doesn't list is never set. System resolves as the page's `theme.js` does without `&theme=`.
 - Save keeps the choice for that computer, or for the demo, and closes the panel only once the write succeeded; otherwise the saved one is unchanged and the panel says so. Cancel, Back or Menu put back what the page showed when the panel opened.
 - Every later load adds the saved skin and theme to the compact URL: `&skin=<id>&theme=<light|dark>`, with no `&theme=` for System. Agent Guild 1.5.0 and later read both.
-- A new load, such as a new `WebView` after the renderer is gone, closes the panel, and an answer from the page counts only for the load that asked.
+- A new document closes the panel: the app's own load, one the page starts itself, or a new `WebView` after the renderer is gone. An answer from the page counts only for the document that asked.
 - The Menu key is taken in `MainActivity.dispatchKeyEvent`, before the page sees it, and only while a TV page shows. A held key acts once.
 
 ## WebView security

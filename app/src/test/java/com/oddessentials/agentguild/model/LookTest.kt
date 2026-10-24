@@ -51,14 +51,16 @@ class LookTest {
     fun theShownSkinMustBeListedAndTheThemeLightOrDark() {
         val look = Looks.parse("""{"skins":$six,"skin":"vapor","theme":"sepia"}""")!!
         assertNull(look.skin)
+        assertEquals("vapor", look.shownSkin)
         assertNull(look.theme)
+        assertNull(Looks.parse("""{"skins":$six,"skin":"x');alert(1);('"}""")!!.shownSkin)
         assertNull(Looks.parse("""{"skins":$six,"skin":7,"theme":null}""")!!.theme)
     }
 
     @Test
     fun aPageWithoutSkinsListsNone() {
-        assertEquals(PageLook(emptyList(), null, Theme.Light), Looks.parse("""{"skins":null,"skin":"guild","theme":"light"}"""))
-        assertEquals(PageLook(emptyList(), null, null), Looks.parse("""{"skins":{"id":"guild"}}"""))
+        assertEquals(PageLook(emptyList(), null, Theme.Light, "guild"), Looks.parse("""{"skins":null,"skin":"guild","theme":"light"}"""))
+        assertEquals(PageLook(emptyList(), null, null, null), Looks.parse("""{"skins":{"id":"guild"}}"""))
     }
 
     @Test
