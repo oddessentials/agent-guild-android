@@ -11,3 +11,4 @@ captures/
 *.keystore
 *.p12
 signing.properties
+node_modules/
