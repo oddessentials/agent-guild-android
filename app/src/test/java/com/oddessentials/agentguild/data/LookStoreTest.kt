@@ -57,13 +57,6 @@ class LookStoreTest {
     }
 
     @Test
-    fun anUnreadableFileReadsAsNoLooks() = runBlocking {
-        val file = File(folder, "looks.json").apply { writeText("not json") }
-        val store = LookStore.create(file, scope)
-        assertEquals(emptyMap<String, Look>(), store.current())
-    }
-
-    @Test
     fun theFileHoldsTheLooksAsJson() = runBlocking {
         val looks = mapOf("id1" to Look("orbital", Theme.Dark), Looks.LOOK_DEMO to Look(theme = Theme.Light))
         val output = ByteArrayOutputStream()

@@ -142,6 +142,7 @@ class TvRemoteTest {
     private fun openScratch(): Pair<ActivityScenario<MainActivity>, android.webkit.WebView> {
         harness.addManager("Scratch")
         val scenario = harness.launch()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("computer:Scratch") == 1 }
         moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("computer:Scratch"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         harness.next(harness.ready)
@@ -152,6 +153,7 @@ class TvRemoteTest {
     fun theRemoteChoosesASkinFromTheList() {
         val scratch = harness.addManager("Scratch")
         val scenario = harness.launch()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("computer:Scratch") == 1 }
         moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("computer:Scratch"))
         moveTo(KeyEvent.KEYCODE_DPAD_RIGHT, hasContentDescription("More for Scratch"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)

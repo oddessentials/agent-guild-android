@@ -8,27 +8,18 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import com.oddessentials.agentguild.model.Look
 import com.oddessentials.agentguild.model.Looks
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.retryWhen
 
 /**
  * Each TV page's [Look], keyed by computer id or [Looks.LOOK_DEMO], in a DataStore file of its own.
  * A look holds no secret, so it stays out of the sealed list of computers.
  */
 class LookStore(private val dataStore: DataStore<Map<String, Look>>) {
-    /** A file that can't be read reads as no looks, and is read again a second later, so later saves still arrive. */
-    val looks: Flow<Map<String, Look>> = dataStore.data.retryWhen { error, _ ->
-        if (error !is IOException) return@retryWhen false
-        emit(emptyMap())
-        delay(1_000)
-        true
-    }
+    val looks: Flow<Map<String, Look>> = dataStore.data
 
     suspend fun current(): Map<String, Look> = looks.first()
 

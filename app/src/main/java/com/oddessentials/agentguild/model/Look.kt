@@ -72,9 +72,8 @@ object Looks {
     }
 
     /**
-     * Shows [skin] and [theme] without loading the page again. The page applies a skin only when it
-     * lists it. [Theme.System] resolves as the page's `theme.js` does without `&theme=`: a theme the
-     * page saved, or else the system's.
+     * Shows [skin] and [theme] without loading the page again. [Theme.System] resolves as the page's
+     * `theme.js` does without `&theme=`: a theme the page saved, or else the system's.
      */
     fun previewScript(skin: String?, theme: Theme): String {
         require(skin == null || isSkinId(skin)) { "not a skin id" }
@@ -90,8 +89,22 @@ object Looks {
             (() => {
               const root = document.documentElement;
               const skin = ${skin?.let { "'$it'" } ?: "null"};
-              if (skin !== null && (window.agentGuildSkins || []).some((item) => item && item.id === skin)) root.dataset.skin = skin;$resolve
+              if (skin !== null) root.dataset.skin = skin;$resolve
               root.dataset.theme = theme;
+            })()
+        """.trimIndent()
+    }
+
+    fun restoreScript(skin: String?, theme: Theme?): String {
+        require(skin == null || isSkinId(skin)) { "not a skin id" }
+        require(theme != Theme.System) { "System is no attribute" }
+        val setSkin = skin?.let { "root.dataset.skin = '$it';" } ?: "delete root.dataset.skin;"
+        val setTheme = theme?.let { "root.dataset.theme = '${it.value}';" } ?: "delete root.dataset.theme;"
+        return """
+            (() => {
+              const root = document.documentElement;
+              $setSkin
+              $setTheme
             })()
         """.trimIndent()
     }

@@ -356,24 +356,6 @@ class TvLookTest {
     }
 
     @Test
-    fun anAnswerFromAnEndedLoadIsDropped() {
-        saveLook(Look("grove"))
-        val (scenario, first) = openBoard()
-        // The panel asks the page, and the renderer ends before the page can answer.
-        scenario.onActivity { activity ->
-            activity.menuKey!!.invoke()
-            assertTrue(WebViewCompat.getWebViewRenderProcess(first)!!.terminate())
-        }
-        val second = harness.webView(scenario, other = first)
-        harness.next(harness.ready)
-        compose.waitForIdle()
-        assertFalse(panelShown())
-        assertEquals("grove", skin(second))
-        openPanel()
-        compose.onNodeWithTag("skin:grove").assertIsSelected()
-    }
-
-    @Test
     fun theListOpensThePanelForAComputer() {
         saveLook(Look("orbital"))
         harness.launch()
@@ -443,5 +425,32 @@ class TvLookTest {
         assertTrue(stillMarked(web))
         assertEquals(Look("grove", Theme.Dark), savedLook(scratch.id))
         assertFalse(compose.onAllNodes(isFocused() and hasAnyAncestor(hasTestTag("look-panel"))).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test
+    fun cancelBackAndMenuRestoreASkinThePageDoesntList() {
+        val (_, web) = openBoard()
+        evaluate(web, "document.documentElement.dataset.skin = 'vapor', true")
+        for (close in listOf({ choose("look-cancel") }, ::pressBack, ::pressMenu)) {
+            openPanel()
+            choose("skin:orbital")
+            harness.untilTrue(web, "document.documentElement.dataset.skin === 'orbital'")
+            close()
+            untilPanelCloses()
+            harness.untilTrue(web, "document.documentElement.dataset.skin === 'vapor'")
+        }
+    }
+
+    @Test
+    fun cancelLeavesMissingAttributesMissing() {
+        val (_, web) = openBoard()
+        evaluate(web, "delete document.documentElement.dataset.skin, delete document.documentElement.dataset.theme, true")
+        openPanel()
+        choose("skin:orbital")
+        choose("theme:dark")
+        harness.untilTrue(web, "document.documentElement.dataset.skin === 'orbital'")
+        choose("look-cancel")
+        untilPanelCloses()
+        harness.untilTrue(web, "!document.documentElement.hasAttribute('data-skin') && !document.documentElement.hasAttribute('data-theme')")
     }
 }

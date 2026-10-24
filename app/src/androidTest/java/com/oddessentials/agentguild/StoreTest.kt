@@ -94,5 +94,10 @@ class StoreTest {
         withLooks { it.remove("id1") }
         assertEquals(mapOf(Looks.LOOK_DEMO to Look(theme = Theme.Light)), withLooks { it.current() })
         assertEquals("""{"looks":{"demo":{"theme":"light"}}}""", looksFile.readText())
+
+        looksFile.writeText("not json")
+        assertEquals(emptyMap<String, Look>(), withLooks { it.current() })
+        withLooks { it.set("id2", Look("orbital")) }
+        assertEquals(mapOf("id2" to Look("orbital")), withLooks { it.current() })
     }
 }

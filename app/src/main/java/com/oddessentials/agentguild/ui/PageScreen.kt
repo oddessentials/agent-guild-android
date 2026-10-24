@@ -135,6 +135,7 @@ fun PageScreen(destination: Destination, openLook: Boolean, onBack: () -> Unit, 
                         look = look,
                         lookKey = destination.lookKey,
                         lookRequested = lookRequested,
+                        onLookRequest = { lookRequested = true },
                         onLookRequestHandled = { lookRequested = false },
                     )
                 }
@@ -165,6 +166,7 @@ private fun WebPage(
     look: Look,
     lookKey: String,
     lookRequested: Boolean,
+    onLookRequest: () -> Unit,
     onLookRequestHandled: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -217,7 +219,7 @@ private fun WebPage(
         }
         val activity = LocalActivity.current as? MainActivity
         DisposableEffect(activity, chooser) {
-            val menu = { if (chooser.isOpen) chooser.cancel() else chooser.open(currentLook) }
+            val menu = { if (chooser.isOpen) chooser.cancel() else onLookRequest() }
             activity?.menuKey = menu
             onDispose { if (activity?.menuKey === menu) activity.menuKey = null }
         }

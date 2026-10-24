@@ -24,14 +24,18 @@ class LookChooserTest {
         override var loaded = true
         val reads = mutableListOf<Pair<Int, (PageLook?) -> Unit>>()
         val previews = mutableListOf<Triple<Int, String?, Theme>>()
+        val restores = mutableListOf<Triple<Int, String?, Theme?>>()
 
         override fun readLook(load: Int, result: (PageLook?) -> Unit) {
             reads += load to result
         }
 
-        override fun preview(load: Int, skin: String?, theme: Theme): Boolean {
+        override fun preview(load: Int, skin: String?, theme: Theme) {
             previews += Triple(load, skin, theme)
-            return load == loads
+        }
+
+        override fun restore(load: Int, skin: String?, theme: Theme?) {
+            restores += Triple(load, skin, theme)
         }
 
         /** The page starts a new document, as a reload or a new renderer does. */
@@ -104,13 +108,6 @@ class LookChooserTest {
     }
 
     @Test
-    fun aSecondRequestWhileTheFirstIsPendingAsksOnce() {
-        chooser.open(Look.Default)
-        chooser.open(Look.Default)
-        assertEquals(1, page.reads.size)
-    }
-
-    @Test
     fun noAnswerOrANotLoadedPageOpensNothing() {
         chooser.open(Look.Default)
         answer(0, null)
@@ -140,25 +137,36 @@ class LookChooserTest {
         chooser.save()
         scope.advanceUntilIdle()
         assertTrue(page.previews.isEmpty())
+        assertTrue(page.restores.isEmpty())
         assertTrue(saves.isEmpty())
     }
 
     @Test
-    fun cancelPutsBackWhatThePageShowed() {
+    fun cancelRestoresWhatThePageShowedAndPreviewsNothing() {
         opened()
         chooser.choose("orbital", Theme.Dark)
         chooser.cancel()
         assertFalse(chooser.isOpen)
-        assertEquals(Triple(1, "grove", Theme.Light), page.previews.last())
+        assertEquals(listOf(Triple(1, "grove", Theme.Light)), page.restores)
+        assertEquals(listOf(Triple(1, "orbital", Theme.Dark)), page.previews)
     }
 
     @Test
-    fun cancelPutsBackAShownSkinTheListLeftOut() {
+    fun cancelRestoresAShownSkinTheListLeftOut() {
         chooser.open(Look.Default)
         answer(0, PageLook(skins, null, Theme.Dark, "vapor"))
         chooser.choose("orbital", Theme.Light)
         chooser.cancel()
-        assertEquals(Triple(1, "vapor", Theme.Dark), page.previews.last())
+        assertEquals(listOf(Triple(1, "vapor", Theme.Dark)), page.restores)
+    }
+
+    @Test
+    fun cancelLeavesMissingAttributesMissing() {
+        chooser.open(Look.Default)
+        answer(0, PageLook(skins, null, null, null))
+        chooser.choose("orbital", Theme.Light)
+        chooser.cancel()
+        assertEquals(listOf(Triple(1, null, null)), page.restores)
     }
 
     @Test
@@ -182,6 +190,18 @@ class LookChooserTest {
         assertFalse(chooser.isOpen)
         assertFalse(chooser.saving)
         assertEquals(listOf(Look("orbital", Theme.System)), saves)
+    }
+
+    @Test
+    fun aSecondAnswerForTheSameDocumentChangesNothing() {
+        chooser.open(Look.Default)
+        chooser.open(Look.Default)
+        answer(0)
+        chooser.choose("orbital", Theme.Dark)
+        answer(1, PageLook(skins, "professional", Theme.Light))
+        assertTrue(chooser.isOpen)
+        assertEquals("orbital", chooser.skin)
+        assertEquals(shown, chooser.page)
     }
 
     @Test

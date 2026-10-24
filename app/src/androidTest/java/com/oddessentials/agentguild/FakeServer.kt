@@ -1,6 +1,7 @@
 package com.oddessentials.agentguild
 
 import java.io.BufferedInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -37,7 +38,12 @@ class FakeServer(val port: Int) : AutoCloseable {
                 } catch (_: Exception) {
                     break
                 }
-                thread(isDaemon = true) { serve(client) }
+                thread(isDaemon = true) {
+                    try {
+                        serve(client)
+                    } catch (_: IOException) {
+                    }
+                }
             }
         }
     }

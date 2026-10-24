@@ -131,4 +131,23 @@ class LookTest {
         assertNull(Theme.explicit("system"))
         assertNull(Theme.explicit("Dark"))
     }
+
+    @Test
+    fun restoringPutsBackAnySafeSkinWithoutCheckingTheList() {
+        val script = Looks.restoreScript("vapor", Theme.Dark)
+        assertTrue(script.contains("root.dataset.skin = 'vapor';"))
+        assertTrue(script.contains("root.dataset.theme = 'dark';"))
+        assertFalse(script.contains("agentGuildSkins"))
+        assertFalse(script.contains("matchMedia"))
+    }
+
+    @Test
+    fun restoringLeavesAMissingAttributeMissing() {
+        val script = Looks.restoreScript(null, null)
+        assertTrue(script.contains("delete root.dataset.skin;"))
+        assertTrue(script.contains("delete root.dataset.theme;"))
+        assertFalse(script.contains("root.dataset.skin ="))
+        assertThrows(IllegalArgumentException::class.java) { Looks.restoreScript("x'", Theme.Light) }
+        assertThrows(IllegalArgumentException::class.java) { Looks.restoreScript("guild", Theme.System) }
+    }
 }

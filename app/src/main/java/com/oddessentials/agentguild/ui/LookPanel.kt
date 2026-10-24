@@ -64,16 +64,12 @@ class LookChooser(private val web: LookPage, private val scope: CoroutineScope, 
     val isOpen get() = page != null
 
     private var load = NONE
-    private var reading = NONE
 
     /** Opens on the current load once the page has answered. [saved] gives the theme, which the page can't tell apart from System. */
     fun open(saved: Look) {
+        if (isOpen || !web.loaded) return
         val current = web.loads
-        if (isOpen || !web.loaded || reading == current) return
-        reading = current
         web.readLook(current) { shown ->
-            if (reading != current) return@readLook
-            reading = NONE
             if (shown == null || isOpen || web.loads != current) return@readLook
             load = current
             skin = shown.skin
@@ -95,7 +91,7 @@ class LookChooser(private val web: LookPage, private val scope: CoroutineScope, 
     fun cancel() {
         val shown = page ?: return
         if (saving) return
-        web.preview(load, shown.shownSkin, shown.theme ?: Theme.System)
+        web.restore(load, shown.shownSkin, shown.theme)
         close()
     }
 
@@ -122,7 +118,6 @@ class LookChooser(private val web: LookPage, private val scope: CoroutineScope, 
 
     /** Called with each new count of [PageWeb.loads]. */
     fun loadChanged(loads: Int) {
-        if (reading != NONE && reading != loads) reading = NONE
         if (isOpen && load != loads) close()
     }
 

@@ -32,10 +32,6 @@ import com.oddessentials.agentguild.model.PageLook
 import com.oddessentials.agentguild.model.PageView
 import com.oddessentials.agentguild.model.Theme
 
-/**
- * The `WebView` that shows one [Page], with the bridge and the rules of the README's "WebView
- * security". It loads only [Page.url], and keeps its main frame on the page's origin.
- */
 /** What the TV's Skin and Theme panel needs from the page, so its rules can be tested without a `WebView`. */
 interface LookPage {
     /** Counts the page's documents; an answer counts only for the one that asked. */
@@ -47,10 +43,17 @@ interface LookPage {
     /** The skins the page offers and the look it shows, for document [load] only. */
     fun readLook(load: Int, result: (PageLook?) -> Unit)
 
-    /** Shows [skin] and [theme] in document [load], without loading it again. False when that document has gone. */
-    fun preview(load: Int, skin: String?, theme: Theme): Boolean
+    /** Shows [skin] and [theme] in document [load], without loading it again. */
+    fun preview(load: Int, skin: String?, theme: Theme)
+
+    /** Puts back the attributes captured from document [load]; null removes one. */
+    fun restore(load: Int, skin: String?, theme: Theme?)
 }
 
+/**
+ * The `WebView` that shows one [Page], with the bridge and the rules of the README's "WebView
+ * security". It loads only [Page.url], and keeps its main frame on the page's origin.
+ */
 class PageWeb(
     private val context: Context,
     val page: Page,
@@ -110,16 +113,15 @@ class PageWeb(
     override fun readLook(load: Int, result: (PageLook?) -> Unit) {
         val view = webView ?: return
         if (!loaded || load != loads) return
-        view.evaluateJavascript(Looks.READ_SCRIPT) { json ->
-            if (view === webView && load == loads) result(Looks.parse(json))
-        }
+        view.evaluateJavascript(Looks.READ_SCRIPT) { json -> if (load == loads) result(Looks.parse(json)) }
     }
 
-    override fun preview(load: Int, skin: String?, theme: Theme): Boolean {
-        val view = webView ?: return false
-        if (!loaded || load != loads) return false
-        view.evaluateJavascript(Looks.previewScript(skin, theme), null)
-        return true
+    override fun preview(load: Int, skin: String?, theme: Theme) {
+        if (loaded && load == loads) webView?.evaluateJavascript(Looks.previewScript(skin, theme), null)
+    }
+
+    override fun restore(load: Int, skin: String?, theme: Theme?) {
+        if (loaded && load == loads) webView?.evaluateJavascript(Looks.restoreScript(skin, theme), null)
     }
 
     fun destroy() {

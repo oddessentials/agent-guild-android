@@ -53,8 +53,9 @@ The compact page keeps no skin or theme of its own, so on a TV the app chooses t
 
 - The skins are the page's own `window.agentGuildSkins`, read once the page has loaded, so the app never copies the list. A skin counts only with an id matching `^[a-z]{1,40}$` and a name of at most 40 characters; the theme is System, Light or Dark.
 - Each choice shows at once: the app sets `data-skin` and `data-theme` on the page, which the Yard redraws on, and loads nothing. A skin the page doesn't list is never set. System resolves as the page's `theme.js` does without `&theme=`.
-- Save keeps the choice for that computer, or for the demo, and closes the panel only once the write succeeded; otherwise the saved one is unchanged and the panel says so. Cancel, Back or Menu put back what the page showed when the panel opened.
-- Every later load adds the saved skin and theme to the compact URL: `&skin=<id>&theme=<light|dark>`, with no `&theme=` for System. Agent Guild 1.5.0 and later read both.
+- Save keeps the choice for that computer, or for the demo, and closes the panel only once the write succeeded; otherwise the saved one is unchanged and the panel says so.
+- Cancel, Back and Menu put back the `data-skin` and `data-theme` the page showed when the panel opened, including a skin the page doesn't list; a missing attribute stays missing.
+- Every load the app starts adds the saved skin and theme to the compact URL: `&skin=<id>&theme=<light|dark>`, with no `&theme=` for System. Agent Guild 1.5.0 and later read both. A reload the page starts itself keeps the look of the app's last load.
 - A new document closes the panel: the app's own load, one the page starts itself, or a new `WebView` after the renderer is gone. An answer from the page counts only for the document that asked.
 - The Menu key is taken in `MainActivity.dispatchKeyEvent`, before the page sees it, and only while a TV page shows. A held key acts once.
 
