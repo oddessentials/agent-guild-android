@@ -29,12 +29,15 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,11 +51,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.oddessentials.agentguild.MainActivity
 import com.oddessentials.agentguild.app
 import com.oddessentials.agentguild.model.Destination
 import com.oddessentials.agentguild.model.Health
 import com.oddessentials.agentguild.model.HealthProblem
 import com.oddessentials.agentguild.model.HealthResult
+import com.oddessentials.agentguild.model.Look
 import com.oddessentials.agentguild.model.Page
 import com.oddessentials.agentguild.model.PageView
 import com.oddessentials.agentguild.model.Recovery
@@ -61,11 +66,12 @@ import com.oddessentials.agentguild.web.PageWeb
 /**
  * A computer's page, or the demo. A saved computer is checked whenever the screen resumes: a
  * rejected token or a changed address offers to sign in again, and other failures keep the page
- * with a banner. On a TV, the page is the compact Yard, full screen, and Back closes the app.
+ * with a banner. On a TV, the page is the compact Yard, full screen, and Back closes the app; the
+ * Menu key, or [openLook] from the list, opens the Skin and Theme panel over it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: String, scan: Boolean) -> Unit) {
+fun PageScreen(destination: Destination, openLook: Boolean, onBack: () -> Unit, onSignIn: (id: String, scan: Boolean) -> Unit) {
     val context = LocalContext.current
     val app = context.app
     val tv = remember { app.tv.isTv(context) }
@@ -75,8 +81,12 @@ fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: Stri
         Destination.Demo -> Page.demo
         is Destination.Saved -> computer?.let(Page::of)
     }
+    // A TV page waits for its saved look, so its first load already shows it.
+    val looks by app.looks.looks.collectAsState(initial = null)
+    val look = looks?.get(destination.lookKey) ?: Look.Default
     // Saved with this window's state.
     var viewValue by rememberSaveable { mutableStateOf(PageView.Yard.value) }
+    var lookRequested by rememberSaveable { mutableStateOf(openLook) }
     val view = if (tv) PageView.Yard else PageView.of(viewValue) ?: PageView.Yard
 
     var attempt by remember { mutableIntStateOf(0) }
@@ -89,7 +99,7 @@ fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: Stri
         checked = Recovery.showsPage(result, checked)
         problem = (result as? HealthResult.Failed)?.problem
     }
-    val showsPage = page != null && (destination == Destination.Demo || checked)
+    val showsPage = page != null && (destination == Destination.Demo || checked) && (!tv || looks != null)
     val activity = LocalActivity.current
     BackHandler(enabled = tv && showsPage) { activity?.finish() }
 
@@ -121,7 +131,13 @@ fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: Stri
                 page == null -> if (computers != null) Message("This computer was removed.")
                 showsPage -> Column(Modifier.fillMaxSize()) {
                     problem?.let { Banner(it.message) }
-                    WebPage(page, view, compact = tv, Modifier.weight(1f))
+                    WebPage(
+                        page, view, compact = tv, Modifier.weight(1f),
+                        look = look,
+                        lookKey = destination.lookKey,
+                        lookRequested = lookRequested,
+                        onLookRequestHandled = { lookRequested = false },
+                    )
                 }
                 problem != null -> CantConnect(
                     problem!!,
@@ -142,7 +158,16 @@ fun PageScreen(destination: Destination, onBack: () -> Unit, onSignIn: (id: Stri
 }
 
 @Composable
-private fun WebPage(page: Page, view: PageView, compact: Boolean, modifier: Modifier) {
+private fun WebPage(
+    page: Page,
+    view: PageView,
+    compact: Boolean,
+    modifier: Modifier,
+    look: Look,
+    lookKey: String,
+    lookRequested: Boolean,
+    onLookRequestHandled: () -> Unit,
+) {
     val context = LocalContext.current
     val app = context.app
     var pendingMicrophone by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
@@ -152,7 +177,7 @@ private fun WebPage(page: Page, view: PageView, compact: Boolean, modifier: Modi
     }
     val web = remember(page) {
         PageWeb(
-            context, page, view, compact, app.links, app.events,
+            context, page, view, compact, look, app.links, app.events,
             object : PageWeb.MicrophoneAccess {
                 override fun granted() =
                     ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -171,6 +196,27 @@ private fun WebPage(page: Page, view: PageView, compact: Boolean, modifier: Modi
     }
     LaunchedEffect(web, view) { web.show(view) }
 
+    // The Skin and Theme panel, on a TV only.
+    SideEffect { web.look = look }
+    val currentLook by rememberUpdatedState(look)
+    val scope = rememberCoroutineScope()
+    val chooser = remember(web) { LookChooser(web, scope) { app.looks.set(lookKey, it) } }
+    LaunchedEffect(chooser, web.loads) { chooser.loadChanged(web.loads) }
+    if (compact) {
+        LaunchedEffect(chooser, lookRequested, web.loaded) {
+            if (lookRequested && web.loaded) {
+                chooser.open(currentLook)
+                onLookRequestHandled()
+            }
+        }
+        val activity = LocalActivity.current as? MainActivity
+        DisposableEffect(activity, chooser) {
+            val menu = { if (chooser.isOpen) chooser.cancel() else chooser.open(currentLook) }
+            activity?.menuKey = menu
+            onDispose { if (activity?.menuKey === menu) activity.menuKey = null }
+        }
+    }
+
     Box(modifier.fillMaxWidth().then(if (compact) Modifier.keepScreenOn() else Modifier)) {
         web.webView?.let { webView ->
             key(webView) { AndroidView({ webView }, Modifier.fillMaxSize().testTag("page")) }
@@ -185,6 +231,7 @@ private fun WebPage(page: Page, view: PageView, compact: Boolean, modifier: Modi
                 Button(onClick = web::reload) { Text("Try Again") }
             }
         }
+        if (compact && chooser.isOpen) LookPanel(chooser, web, Modifier.align(Alignment.CenterEnd))
     }
 }
 

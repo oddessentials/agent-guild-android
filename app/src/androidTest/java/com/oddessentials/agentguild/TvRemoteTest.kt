@@ -8,6 +8,9 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
@@ -20,11 +23,15 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.oddessentials.agentguild.Harness.Companion.evaluateString
+import com.oddessentials.agentguild.model.Look
+import com.oddessentials.agentguild.model.Theme
 import com.oddessentials.agentguild.web.TvCheck
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
@@ -126,5 +133,83 @@ class TvRemoteTest {
     @Test
     fun backWhileTheKeyboardIsOpenOnlyClosesIt() {
         closeKeyboard(startAdding())
+    }
+
+    private val inPanel = hasAnyAncestor(hasTestTag("look-panel"))
+
+    private fun focusInPanel() = compose.onAllNodes(inPanel and isFocused()).fetchSemanticsNodes().isNotEmpty()
+
+    private fun openScratch(): Pair<ActivityScenario<MainActivity>, android.webkit.WebView> {
+        harness.addManager("Scratch")
+        val scenario = harness.launch()
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("computer:Scratch"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        harness.next(harness.ready)
+        return scenario to harness.webView(scenario)
+    }
+
+    @Test
+    fun theRemoteChoosesASkinFromTheList() {
+        val scratch = harness.addManager("Scratch")
+        val scenario = harness.launch()
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasContentDescription("More for Scratch"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasText("Skin and Theme"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        harness.next(harness.ready)
+        val web = harness.webView(scenario)
+        // The panel opens with the focus on the skin the page shows.
+        compose.waitUntil(10_000) { focusInPanel() }
+        assertTrue(isFocused(hasTestTag("skin:professional")))
+
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("skin:grove"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        compose.onNodeWithTag("skin:grove").assertIsSelected()
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("theme:dark"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("look-save"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-panel") == 0 }
+        assertEquals(Look("grove", Theme.Dark), runBlocking { harness.app.looks.current()[scratch.id] })
+        assertEquals("grove", evaluateString(web, "document.documentElement.dataset.skin"))
+        assertEquals("dark", evaluateString(web, "document.documentElement.dataset.theme"))
+        compose.waitUntil(5_000) { harness.webViewHasFocus(scenario) }
+    }
+
+    @Test
+    fun theMenuKeyOpensThePanelAndTheFocusStaysInsideIt() {
+        val (scenario, web) = openScratch()
+        press(KeyEvent.KEYCODE_MENU)
+        compose.waitUntil(10_000) { focusInPanel() }
+
+        listOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT)
+            .plus(List(12) { KeyEvent.KEYCODE_DPAD_UP })
+            .plus(List(16) { KeyEvent.KEYCODE_DPAD_DOWN })
+            .forEach {
+                press(it)
+                assertTrue("The focus left the panel after key $it", focusInPanel())
+            }
+        assertFalse(harness.webViewHasFocus(scenario))
+
+        // Back closes the panel, not the app, and the page has the focus again.
+        press(KeyEvent.KEYCODE_BACK)
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-panel") == 0 }
+        compose.waitUntil(5_000) { harness.webViewHasFocus(scenario) }
+        assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
+
+        // Menu opens it again, and closes it.
+        press(KeyEvent.KEYCODE_MENU)
+        compose.waitUntil(10_000) { focusInPanel() }
+        press(KeyEvent.KEYCODE_MENU)
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-panel") == 0 }
+        compose.waitUntil(5_000) { harness.webViewHasFocus(scenario) }
+
+        // The D-pad still reaches only the page, which opens nothing from it.
+        listOf(KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP).forEach(::press)
+        assertEquals("true", evaluateString(web, "String(document.getElementById('terminal-panel').hidden)"))
+
+        press(KeyEvent.KEYCODE_BACK)
+        compose.waitUntil(10_000) { scenario.state == Lifecycle.State.DESTROYED }
     }
 }

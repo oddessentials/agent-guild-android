@@ -5,7 +5,11 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.oddessentials.agentguild.data.AesGcmSealer
 import com.oddessentials.agentguild.data.ComputerStore
+import com.oddessentials.agentguild.data.LookStore
+import com.oddessentials.agentguild.model.Look
+import com.oddessentials.agentguild.model.Looks
 import com.oddessentials.agentguild.model.SignInLink
+import com.oddessentials.agentguild.model.Theme
 import java.io.File
 import java.security.KeyStore
 import java.util.UUID
@@ -22,7 +26,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The saved computers in DataStore, sealed with a key from the Android Keystore. */
+/** The saved computers in DataStore, sealed with a key from the Android Keystore, and the TV's looks beside them. */
 @RunWith(AndroidJUnit4::class)
 class StoreTest {
     private val app: AgentGuildApp = ApplicationProvider.getApplicationContext()
@@ -67,5 +71,28 @@ class StoreTest {
     @Test
     fun theAppIsKeptOutOfBackups() {
         assertEquals(0, app.applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP)
+    }
+
+    @Test
+    fun theLooksSurviveAndAreReplacedAndRemoved() = runBlocking {
+        val looksFile = File(folder, "looks.json")
+        suspend fun <T> withLooks(block: suspend (LookStore) -> T): T {
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            try {
+                return block(LookStore.create(looksFile, scope))
+            } finally {
+                scope.coroutineContext.job.cancelAndJoin()
+            }
+        }
+
+        withLooks { looks ->
+            looks.set("id1", Look("orbital", Theme.Dark))
+            looks.set(Looks.LOOK_DEMO, Look(theme = Theme.Light))
+            looks.set("id1", Look("grove"))
+        }
+        assertEquals(mapOf("id1" to Look("grove"), Looks.LOOK_DEMO to Look(theme = Theme.Light)), withLooks { it.current() })
+        withLooks { it.remove("id1") }
+        assertEquals(mapOf(Looks.LOOK_DEMO to Look(theme = Theme.Light)), withLooks { it.current() })
+        assertEquals("""{"looks":{"demo":{"theme":"light"}}}""", looksFile.readText())
     }
 }

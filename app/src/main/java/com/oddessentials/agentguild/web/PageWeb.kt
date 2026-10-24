@@ -13,6 +13,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.webkit.WebMessageCompat
@@ -20,12 +21,16 @@ import androidx.webkit.WebViewCompat
 import com.oddessentials.agentguild.BuildConfig
 import com.oddessentials.agentguild.model.Bridge
 import com.oddessentials.agentguild.model.BridgeMessage
+import com.oddessentials.agentguild.model.Look
+import com.oddessentials.agentguild.model.Looks
 import com.oddessentials.agentguild.model.Microphone
 import com.oddessentials.agentguild.model.MicrophoneDecision
 import com.oddessentials.agentguild.model.Navigation
 import com.oddessentials.agentguild.model.NavigationDecision
 import com.oddessentials.agentguild.model.Page
+import com.oddessentials.agentguild.model.PageLook
 import com.oddessentials.agentguild.model.PageView
+import com.oddessentials.agentguild.model.Theme
 
 /**
  * The `WebView` that shows one [Page], with the bridge and the rules of the README's "WebView
@@ -36,6 +41,8 @@ class PageWeb(
     val page: Page,
     initialView: PageView,
     private val compact: Boolean,
+    /** The saved look each load of the compact page uses; the page screen keeps it current. */
+    var look: Look,
     private val links: LinkOpener,
     private val events: PageEvents,
     private val microphone: MicrophoneAccess,
@@ -55,9 +62,19 @@ class PageWeb(
     var left by mutableStateOf(false)
         private set
 
+    /**
+     * Counts loads, and the `WebView`'s end. A script's answer counts only for the load that asked,
+     * so one from an earlier load, or from a `WebView` since destroyed, is dropped.
+     */
+    var loads by mutableIntStateOf(0)
+        private set
+
+    /** The current load finished on the manager's origin. */
+    var loaded by mutableStateOf(false)
+        private set
+
     private var shownView = initialView
     private var loadedView: PageView? = null
-    private var finished = false
 
     fun start() {
         if (webView == null) webView = create().also { load(it) }
@@ -71,19 +88,39 @@ class PageWeb(
     fun show(view: PageView) {
         if (view == shownView) return
         shownView = view
-        if (finished) webView?.evaluateJavascript(Bridge.viewScript(view), null)
+        if (loaded) webView?.evaluateJavascript(Bridge.viewScript(view), null)
+    }
+
+    /** The skins the page offers and the look it shows, for the current load only. */
+    fun readLook(load: Int, result: (PageLook?) -> Unit) {
+        val view = webView ?: return
+        if (!loaded || load != loads) return
+        view.evaluateJavascript(Looks.READ_SCRIPT) { json ->
+            if (view === webView && load == loads) result(Looks.parse(json))
+        }
+    }
+
+    /** Shows [skin] and [theme] in the page of [load], without loading it again. False when that load has ended. */
+    fun preview(load: Int, skin: String?, theme: Theme): Boolean {
+        val view = webView ?: return false
+        if (!loaded || load != loads) return false
+        view.evaluateJavascript(Looks.previewScript(skin, theme), null)
+        return true
     }
 
     fun destroy() {
         webView?.let(::dispose)
         webView = null
+        loads++
+        loaded = false
     }
 
     private fun load(view: WebView) {
         left = false
-        finished = false
+        loads++
+        loaded = false
         loadedView = shownView
-        view.loadUrl(page.url(shownView, compact))
+        view.loadUrl(page.url(shownView, compact, look))
     }
 
     private fun dispose(view: WebView) {
@@ -154,8 +191,8 @@ class PageWeb(
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
-                if (left || !Navigation.staysOnManager(url, page.origin)) return
-                finished = true
+                if (view !== webView || left || !Navigation.staysOnManager(url, page.origin)) return
+                loaded = true
                 if (shownView != loadedView) view.evaluateJavascript(Bridge.viewScript(shownView), null)
             }
 

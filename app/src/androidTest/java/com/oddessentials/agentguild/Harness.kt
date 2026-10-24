@@ -35,9 +35,13 @@ class Harness(private val compose: ComposeTestRule) {
     val ready = LinkedBlockingQueue<String>()
     val blocked = LinkedBlockingQueue<String>()
     private val scenarios = CopyOnWriteArrayList<ActivityScenario<MainActivity>>()
+    private val looks = app.looks
 
     init {
-        runBlocking { app.store.current().forEach { app.store.remove(it.id) } }
+        runBlocking {
+            app.store.current().forEach { app.store.remove(it.id) }
+            looks.current().keys.forEach { looks.remove(it) }
+        }
         app.webViewSupport = WebViewSupport.System
         app.tv = TvCheck.System
         app.links = LinkOpener { _: Context, url -> opened += url }
@@ -66,7 +70,11 @@ class Harness(private val compose: ComposeTestRule) {
         app.events = PageEvents.None
         app.webViewSupport = WebViewSupport.System
         app.tv = TvCheck.System
-        runBlocking { app.store.current().forEach { app.store.remove(it.id) } }
+        app.looks = looks
+        runBlocking {
+            app.store.current().forEach { app.store.remove(it.id) }
+            looks.current().keys.forEach { looks.remove(it) }
+        }
     }
 
     /** The page's `WebView`, once there is one other than [other]. */
@@ -92,6 +100,13 @@ class Harness(private val compose: ComposeTestRule) {
             item != null
         }
         return item!!
+    }
+
+    /** Whether the page's `WebView` holds the focus. */
+    fun webViewHasFocus(scenario: ActivityScenario<MainActivity>): Boolean {
+        var focused = false
+        scenario.onActivity { activity -> focused = find(activity.window.decorView)?.hasFocus() == true }
+        return focused
     }
 
     private fun find(view: View): WebView? {

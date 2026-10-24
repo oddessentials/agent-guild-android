@@ -38,12 +38,16 @@ import com.oddessentials.agentguild.app
 import com.oddessentials.agentguild.model.Computer
 import com.oddessentials.agentguild.model.Destination
 import com.oddessentials.agentguild.model.Origin
+import java.io.IOException
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ComputerList(onOpen: (Destination) -> Unit, onAdd: (updating: String?) -> Unit) {
-    val store = LocalContext.current.app.store
+fun ComputerList(onOpen: (Destination) -> Unit, onLook: (Destination) -> Unit, onAdd: (updating: String?) -> Unit) {
+    val context = LocalContext.current
+    val store = context.app.store
+    val looks = context.app.looks
+    val tv = remember { context.app.tv.isTv(context) }
     val computers by store.computers.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
     var renaming by rememberSaveable { mutableStateOf<String?>(null) }
@@ -62,9 +66,19 @@ fun ComputerList(onOpen: (Destination) -> Unit, onAdd: (updating: String?) -> Un
                 ComputerRow(
                     computer,
                     onOpen = { onOpen(Destination.Saved(computer.id)) },
+                    onLook = if (tv) ({ onLook(Destination.Saved(computer.id)) }) else null,
                     onRename = { renaming = computer.id },
                     onSignIn = { onAdd(computer.id) },
-                    onRemove = { scope.launch { store.remove(computer.id) } },
+                    onRemove = {
+                        scope.launch {
+                            store.remove(computer.id)
+                            // A look left behind holds nothing secret, and is never shown again.
+                            try {
+                                looks.remove(computer.id)
+                            } catch (_: IOException) {
+                            }
+                        }
+                    },
                 )
             }
             if (computers?.isEmpty() == true) {
@@ -74,9 +88,15 @@ fun ComputerList(onOpen: (Destination) -> Unit, onAdd: (updating: String?) -> Un
             }
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
             item {
-                Column(Modifier.fillMaxWidth().clickable { onOpen(Destination.Demo) }.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Text("Try the demo", style = MaterialTheme.typography.bodyLarge)
-                    Text("Simulated sessions, with no computer needed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    Modifier.fillMaxWidth().clickable { onOpen(Destination.Demo) }.padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                        Text("Try the demo", style = MaterialTheme.typography.bodyLarge)
+                        Text("Simulated sessions, with no computer needed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (tv) More("the demo") { close -> LookItem(close) { onLook(Destination.Demo) } }
                 }
             }
         }
@@ -92,8 +112,7 @@ fun ComputerList(onOpen: (Destination) -> Unit, onAdd: (updating: String?) -> Un
 }
 
 @Composable
-private fun ComputerRow(computer: Computer, onOpen: () -> Unit, onRename: () -> Unit, onSignIn: () -> Unit, onRemove: () -> Unit) {
-    var menu by remember { mutableStateOf(false) }
+private fun ComputerRow(computer: Computer, onOpen: () -> Unit, onLook: (() -> Unit)?, onRename: () -> Unit, onSignIn: () -> Unit, onRemove: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().testTag("computer:${computer.name}").clickable(onClick = onOpen).padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -102,15 +121,28 @@ private fun ComputerRow(computer: Computer, onOpen: () -> Unit, onRename: () -> 
             Text(computer.name, style = MaterialTheme.typography.bodyLarge)
             Text(Origin.parse(computer.address)?.host ?: computer.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Box {
-            TextButton(onClick = { menu = true }, Modifier.semantics { contentDescription = "More for ${computer.name}" }) { Text("⋮") }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
-                DropdownMenuItem(text = { Text("Sign In Again") }, onClick = { menu = false; onSignIn() })
-                DropdownMenuItem(text = { Text("Remove") }, onClick = { menu = false; onRemove() })
-            }
+        More(computer.name) { close ->
+            if (onLook != null) LookItem(close, onLook)
+            DropdownMenuItem(text = { Text("Rename") }, onClick = { close(); onRename() })
+            DropdownMenuItem(text = { Text("Sign In Again") }, onClick = { close(); onSignIn() })
+            DropdownMenuItem(text = { Text("Remove") }, onClick = { close(); onRemove() })
         }
     }
+}
+
+/** A row's ⋮ menu. */
+@Composable
+private fun More(name: String, items: @Composable (close: () -> Unit) -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { menu = true }, Modifier.semantics { contentDescription = "More for $name" }) { Text("⋮") }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) { items { menu = false } }
+    }
+}
+
+@Composable
+private fun LookItem(close: () -> Unit, onLook: () -> Unit) {
+    DropdownMenuItem(text = { Text("Skin and Theme") }, onClick = { close(); onLook() })
 }
 
 @Composable
