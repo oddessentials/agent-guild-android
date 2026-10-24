@@ -45,6 +45,8 @@ object CameraChoice {
             null
         }
 
+    const val HEADSET_CAMERA = "horizonos.permission.HEADSET_CAMERA"
+
     /** The two features Meta's `HorizonOsDetector.isOnHorizonOs` checks, without its library. */
     fun isHorizonOs(context: Context) =
         context.packageManager.hasSystemFeature("horizonos.software.horizon_os") ||

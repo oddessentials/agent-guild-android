@@ -50,17 +50,19 @@ import java.util.concurrent.Executors
 @Composable
 fun Scanner(onScan: (String) -> Unit, onCancel: () -> Unit) {
     val context = LocalContext.current
-    var permitted by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    val headset = remember { CameraChoice.isHorizonOs(context) }
+    val wanted = remember {
+        if (headset) arrayOf(Manifest.permission.CAMERA, CameraChoice.HEADSET_CAMERA) else arrayOf(Manifest.permission.CAMERA)
     }
+    val granted = { permission: String -> ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED }
+    var permitted by remember { mutableStateOf(wanted.all(granted)) }
     var refused by remember { mutableStateOf(false) }
     var unavailable by remember { mutableStateOf(false) }
-    val headset = remember { CameraChoice.isHorizonOs(context) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        permitted = granted
-        refused = !granted
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        permitted = granted(Manifest.permission.CAMERA)
+        refused = !permitted
     }
-    LaunchedEffect(Unit) { if (!permitted) ask.launch(Manifest.permission.CAMERA) }
+    LaunchedEffect(Unit) { if (!permitted) ask.launch(wanted) }
 
     Box(Modifier.fillMaxSize()) {
         if (unavailable) {

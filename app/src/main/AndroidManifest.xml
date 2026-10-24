@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- The WebView needs it for the page's audio capture. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
