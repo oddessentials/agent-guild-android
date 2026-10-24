@@ -45,7 +45,7 @@ agent-guild's `docs/api.md`, **The page in the Agent Guild app → Android**, is
 
 The page needs agent-guild's change "feat: support Agent Guild in the Android app web view". The app's minimum Agent Guild version is the first release that carries it, 1.9.0 (`Health.MINIMUM_VERSION`). A development build reports `0.0.0-development` and is accepted, as the Apple app does.
 
-The app accepts `ready` and `open`, and ignores `expand` and `look`.
+The app accepts `ready` and `open`, and ignores `look`. On a TV it loads the compact layout with `&expand=none`, so the page sends no `expand`.
 
 ## WebView security
 

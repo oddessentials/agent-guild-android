@@ -18,8 +18,8 @@ class PageTest {
     @Test
     fun theCompactURLAsksForTheCompactLayout() {
         val page = Page("https://mini.tail1234.ts.net", "abc123")
-        assertEquals("https://mini.tail1234.ts.net/#token=abc123&layout=compact&view=yard", page.url(PageView.Yard, compact = true))
-        assertEquals("https://oddessentials.github.io/agent-guild/#layout=compact&view=yard", Page.demo.url(PageView.Yard, compact = true))
+        assertEquals("https://mini.tail1234.ts.net/#token=abc123&layout=compact&expand=none&view=yard", page.url(PageView.Yard, compact = true))
+        assertEquals("https://oddessentials.github.io/agent-guild/#layout=compact&expand=none&view=yard", Page.demo.url(PageView.Yard, compact = true))
     }
 
     @Test

@@ -79,7 +79,7 @@ class TvTest {
         val scenario = open(tv = true)
         harness.next(harness.ready)
         val web = harness.webView(scenario)
-        assertEquals("#token=$token&layout=compact&view=yard", evaluateString(web, "location.hash"))
+        assertEquals("#token=$token&layout=compact&expand=none&view=yard", evaluateString(web, "location.hash"))
         assertEquals(0, compose.onAllNodesWithTagCount("view:cards"))
         assertEquals(0, compose.onAllNodesWithTextCount("Back"))
         assertTrue(keepsScreenOn(scenario))
