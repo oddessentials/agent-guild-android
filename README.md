@@ -260,4 +260,4 @@ node tests/release/apk.mjs app/build/outputs/apk/release/app-release-unsigned.ap
 
 ## License
 
-[PolyForm Shield 1.0.0](LICENSE), as Agent Guild.
+Copyright (c) 2026 Odd Essentials. Open source under the [GNU AGPL 3.0](LICENSE), as Agent Guild.
