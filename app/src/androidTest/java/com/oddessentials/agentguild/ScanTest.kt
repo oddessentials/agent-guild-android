@@ -1,9 +1,13 @@
 package com.oddessentials.agentguild
 
 import android.Manifest
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -109,5 +113,25 @@ class ScanTest {
         deliver(deliver, "${manager.origin}/#token=$newToken")
         compose.waitUntil(20_000) { compose.onAllNodesWithTextCount("This computer was removed.") == 1 }
         assertEquals(emptyList<Computer>(), runBlocking { harness.app.store.current() })
+    }
+
+    @Test
+    fun aScanThatFinishesAfterCancelIsIgnored() {
+        openScannerFromRecovery()
+        val deliver = harness.next(delivers)
+        compose.onNodeWithText("Cancel").click()
+        compose.onNodeWithTag("link").assertExists()
+        status.set(200)
+        val checks = manager.hits("/api/v1/info")
+
+        // As an ML Kit result whose callback was already queued on the main thread when Cancel was pressed.
+        deliver(deliver, "${manager.origin}/#token=$newToken")
+        compose.waitForIdle()
+
+        // Taking the scan would fill in the link and start the check at once.
+        compose.onNodeWithTag("link").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNodeWithTag("submit").assertExists()
+        assertEquals(checks, manager.hits("/api/v1/info"))
+        assertEquals(listOf(computer), runBlocking { harness.app.store.current() })
     }
 }

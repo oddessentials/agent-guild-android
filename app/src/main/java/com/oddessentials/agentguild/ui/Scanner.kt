@@ -92,9 +92,12 @@ private fun CameraPreview(onScan: (String) -> Unit) {
     val currentOnScan by rememberUpdatedState(onScan)
 
     DisposableEffect(lifecycleOwner) {
+        // Set once the scanner leaves the screen. A read already on its way, such as an ML Kit
+        // callback queued on the main thread when Cancel was pressed, is then dropped.
+        var disposed = false
         val deliver = { texts: List<String> ->
             val link = texts.firstOrNull { AgentGuildApp.parseLink(it) != null }
-            if (link != null && !done) {
+            if (link != null && !done && !disposed) {
                 done = true
                 currentOnScan(link)
             }
@@ -102,13 +105,13 @@ private fun CameraPreview(onScan: (String) -> Unit) {
         context.app.scanResults?.let { injected ->
             injected(deliver)
             return@DisposableEffect onDispose {
+                disposed = true
                 scanner.close()
                 executor.shutdown()
             }
         }
         val future = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
-        var disposed = false
         future.addListener({
             if (disposed) return@addListener
             provider = future.get()
