@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.oddessentials.agentguild.web.TvCheck
 import com.oddessentials.agentguild.web.WebViewSupport
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -31,9 +32,21 @@ class StartupTest {
     @Test
     fun anUnsupportedWebViewAsksForAnUpdate() {
         harness.app.webViewSupport = webView(supported = false)
+        harness.app.tv = TvCheck { false }
         harness.launch()
         compose.onNodeWithTag("unsupported").assertTextContains("74.0.3729.186", substring = true)
         compose.onNodeWithTag("unsupported").assertTextContains("Update Android System WebView", substring = true)
+        assertEquals(0, compose.onAllNodesWithTextCount("Add Computer"))
+    }
+
+    @Test
+    fun anUnsupportedWebViewOnATvAsksForASoftwareUpdate() {
+        harness.app.webViewSupport = webView(supported = false)
+        harness.app.tv = TvCheck { true }
+        harness.launch()
+        compose.onNodeWithTag("unsupported").assertTextContains("74.0.3729.186", substring = true)
+        compose.onNodeWithTag("unsupported").assertTextContains("Update the TV's software", substring = true)
+        assertEquals(0, compose.onAllNodesWithTextCount("Android System WebView", substring = true))
         assertEquals(0, compose.onAllNodesWithTextCount("Add Computer"))
     }
 

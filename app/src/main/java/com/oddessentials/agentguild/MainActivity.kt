@@ -14,9 +14,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val support = app.webViewSupport
         val supported = support.supportsMessageListener()
+        val tv = app.tv.isTv(this)
         setContent {
             AgentGuildTheme {
-                if (supported) Root() else Unsupported(support.version(this))
+                if (supported) Root() else Unsupported(support.version(this), tv)
             }
         }
     }

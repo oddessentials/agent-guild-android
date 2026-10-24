@@ -17,18 +17,21 @@ import androidx.compose.ui.unit.dp
 
 /** Shown instead of everything else when the `WebView` lacks `WEB_MESSAGE_LISTENER`. */
 @Composable
-fun Unsupported(version: String?) {
+fun Unsupported(version: String?, tv: Boolean) {
     Surface(Modifier.fillMaxSize()) {
         Column(
             Modifier.safeDrawingPadding().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Update Android System WebView", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+            val installed = version?.let { " (version $it)" } ?: ""
+            Text(if (tv) "Update This TV" else "Update Android System WebView", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
             Text(
-                "Agent Guild needs a newer Android System WebView than this device has" +
-                    (version?.let { " (version $it)" } ?: "") +
-                    ". Update Android System WebView, then open Agent Guild again.",
+                if (tv) {
+                    "Agent Guild needs a newer WebView than this TV has$installed. Update the TV's software, then open Agent Guild again."
+                } else {
+                    "Agent Guild needs a newer Android System WebView than this device has$installed. Update Android System WebView, then open Agent Guild again."
+                },
                 Modifier.testTag("unsupported"),
                 textAlign = TextAlign.Center,
             )
