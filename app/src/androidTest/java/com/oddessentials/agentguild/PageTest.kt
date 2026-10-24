@@ -54,6 +54,27 @@ class PageTest {
         assertEquals("function", evaluateString(web, "typeof window.agentGuild.postMessage"))
     }
 
+    /** The page's dialogs and menus cap their height with vh and dvh, which are 0 if the WebView wraps its content. */
+    @Test
+    fun viewportUnitsAreTheWebViewsHeight() {
+        val web = open()
+        val heights = evaluateString(
+            web,
+            """(() => {
+                const probe = (height) => Object.assign(document.createElement('div'), { style: `position: fixed; top: 0; height: ${'$'}{height}` });
+                const vh = probe('100vh'), dvh = probe('100dvh');
+                document.body.append(vh, dvh);
+                const heights = [vh, dvh].map((element) => Math.round(element.getBoundingClientRect().height)).join(' ');
+                vh.remove();
+                dvh.remove();
+                return heights;
+            })()""",
+        )
+        val height = evaluate(web, "Math.round(visualViewport.height)").toInt()
+        assertTrue(height > 0)
+        assertEquals("$height $height", heights)
+    }
+
     @Test
     fun theSwitchShowsCardsAndTheYard() {
         val web = open()

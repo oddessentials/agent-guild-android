@@ -99,6 +99,9 @@ class PageWeb(
     @SuppressLint("SetJavaScriptEnabled", "RequiresFeature")
     private fun create(): WebView {
         val view = WebView(context)
+        // Without layout params, AndroidView gives the WebView WRAP_CONTENT, and a WebView whose
+        // height wraps its content makes the page's vh and dvh units 0.
+        view.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
