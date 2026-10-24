@@ -19,15 +19,31 @@ enum class PageView(val value: String, val title: String) {
 sealed interface Destination {
     data class Saved(val id: String) : Destination
     data object Demo : Destination
+
+    /** Where its [Look] is saved. */
+    val lookKey: String
+        get() = when (this) {
+            is Saved -> id
+            Demo -> Looks.LOOK_DEMO
+        }
 }
 
 /** The page the `WebView` may load, and the only origin it may stay on. */
 data class Page(val address: String, val token: String?) {
     val origin: Origin = requireNotNull(Origin.parse(address)) { "not a web address" }
 
-    /** `<address>/#token=<token>[&layout=compact&expand=none]&view=<view>`; the demo has no token. */
-    fun url(view: PageView?, compact: Boolean = false): String {
-        val fragment = listOfNotNull(token?.let { "token=$it" }, "layout=compact&expand=none".takeIf { compact }, view?.let { "view=${it.value}" })
+    /**
+     * `<address>/#token=<token>[&layout=compact&expand=none[&skin=<id>][&theme=<theme>]]&view=<view>`;
+     * the demo has no token. Only the compact layout takes a [look].
+     */
+    fun url(view: PageView?, compact: Boolean = false, look: Look = Look.Default): String {
+        val fragment = listOfNotNull(
+            token?.let { "token=$it" },
+            "layout=compact&expand=none".takeIf { compact },
+            look.skin?.takeIf { compact }?.let { "skin=$it" },
+            look.theme.value?.takeIf { compact }?.let { "theme=$it" },
+            view?.let { "view=${it.value}" },
+        )
         val base = if (address.endsWith("/")) address else "$address/"
         return if (fragment.isEmpty()) base else base + "#" + fragment.joinToString("&")
     }
