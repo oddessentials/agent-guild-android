@@ -1,6 +1,7 @@
 package com.oddessentials.agentguild
 
 import android.Manifest
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -119,13 +120,16 @@ class ScanTest {
     fun aScanThatFinishesAfterCancelIsIgnored() {
         openScannerFromRecovery()
         val deliver = harness.next(delivers)
-        compose.onNodeWithText("Cancel").click()
-        compose.onNodeWithTag("link").assertExists()
+        val cancel = compose.onNodeWithText("Cancel").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
         status.set(200)
         val checks = manager.hits("/api/v1/info")
 
-        // As an ML Kit result whose callback was already queued on the main thread when Cancel was pressed.
-        deliver(deliver, "${manager.origin}/#token=$newToken")
+        // Cancel, then an ML Kit result whose callback was already queued, in one main-thread step:
+        // before Compose can draw the form again or dispose of the camera.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            check(cancel())
+            deliver(listOf("${manager.origin}/#token=$newToken"))
+        }
         compose.waitForIdle()
 
         // Taking the scan would fill in the link and start the check at once.

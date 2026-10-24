@@ -98,6 +98,8 @@ fun AddComputer(updating: String?, scanFirst: Boolean, onDone: () -> Unit) {
         BackHandler { scanning = false }
         Scanner(
             onScan = { scanned ->
+                // Cancel sets scanning to false at once, before the scanner leaves the screen.
+                if (!scanning) return@Scanner
                 scanning = false
                 link = scanned
                 problem = null
