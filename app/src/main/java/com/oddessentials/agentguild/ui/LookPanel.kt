@@ -147,7 +147,7 @@ fun LookPanel(chooser: LookChooser, web: PageWeb, modifier: Modifier = Modifier)
     BackHandler { chooser.cancel() }
     LaunchedEffect(Unit) { first.requestFocus() }
     // Posted, so a new WebView, after the renderer went away, gets it once it is attached.
-    DisposableEffect(Unit) { onDispose { web.webView?.let { view -> view.post { view.requestFocus() } } } }
+    DisposableEffect(Unit) { onDispose { web.webView?.let { view -> view.post { if (view === web.webView) view.requestFocus() } } } }
 
     Surface(
         modifier

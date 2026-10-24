@@ -29,7 +29,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -197,7 +196,8 @@ private fun WebPage(
     LaunchedEffect(web, view) { web.show(view) }
 
     // The Skin and Theme panel, on a TV only.
-    SideEffect { web.look = look }
+    // Only when the store's value changes, so a recomposition can't put back a look older than one just saved.
+    LaunchedEffect(web, look) { web.look = look }
     val currentLook by rememberUpdatedState(look)
     val scope = rememberCoroutineScope()
     val chooser = remember(web) {
