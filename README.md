@@ -162,7 +162,7 @@ Kotlin and Compose, package `com.oddessentials.agentguild`, in `app/`:
 - `model/`: what the JVM tests cover. `SignInLink` (the parser above), `Origin`, `Health` (the `/api/v1/info` check and its `HealthProblem` messages, which read like the Apple app's), `Bridge`, `Navigation`, `Microphone`, `Recovery`, and `Json`, a strict JSON reader: Android's `org.json` accepts single quotes, comments and unquoted names, and isn't available to JVM tests.
 - `data/`: the list of computers in DataStore, sealed by `AesGcmSealer`.
 - `web/PageWeb.kt`: the `WebView`, its clients and the bridge listener. `web/Hooks.kt` holds the startup feature check, the Custom Tab opener and the page events, which instrumented tests replace through `AgentGuildApp`.
-- `scan/` and `ui/Scanner.kt`: CameraX and ML Kit's bundled QR model.
+- `scan/` and `ui/Scanner.kt`: CameraX and ML Kit's bundled QR model. `CameraChoice` picks the camera: a Meta passthrough camera (vendor tag `com.meta.extra_metadata.camera_source` 0, the left one first), else the first back camera, then the first front one. On a Horizon OS headset, recognized by the two system features Meta's `HorizonOsDetector` checks, it never falls back to the front camera, which shows the wearer's avatar; the scanner says the camera is unavailable instead. On a headset the scanner also asks for `horizonos.permission.HEADSET_CAMERA`, which some of Meta's documentation requires with `CAMERA`; the camera starts once `CAMERA` is granted.
 - `ui/`: the computer list (add, rename, sign in again, remove, the demo), Add Computer, the page screen and the unsupported-WebView screen. The page screen checks its computer at every `ON_RESUME`: a rejected token or a changed address offers to scan or paste the sign-in link again, and other failures keep the page with a banner. The Yard/Cards choice is saved with the window's state.
 
 Debug builds also accept `http://127.0.0.1:<port>` sign-in links, and allow cleartext only to `127.0.0.1` (`app/src/debug/res/xml/network_security_config.xml`); release builds allow no cleartext.
@@ -256,8 +256,9 @@ node tests/release/apk.mjs app/build/outputs/apk/release/app-release-unsigned.ap
 - **Dictate** needs a speech recognition service on the device. Without one, pressing Dictate ends at once and the page shows nothing. Detecting that natively and telling the page would change the bridge contract, so it needs approval first.
 - **Read aloud** is hidden until it is done natively.
 - **No notifications or background connection:** the `WebView`'s sockets close when Android stops the app, and the page reconnects when it returns. The sessions keep running on the computer.
+- **Meta Horizon OS:** sideloaded only, untested on a headset. Scanning needs a Quest 3 or 3S on Horizon OS v74 or later, with passthrough on; elsewhere, paste the sign-in link. Whether the headset's `WebView` supports `WEB_MESSAGE_LISTENER` is unknown; without it, the app shows its unsupported screen.
 - **Emulator and Tailscale:** tailnet names resolve only with `start.ps1 -Tailnet`.
 
 ## License
 
-[PolyForm Shield 1.0.0](LICENSE), as Agent Guild.
+Copyright (c) 2026 Odd Essentials. Open source under the [GNU AGPL 3.0](LICENSE), as Agent Guild.

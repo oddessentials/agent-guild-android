@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
@@ -39,6 +41,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.oddessentials.agentguild.AgentGuildApp
 import com.oddessentials.agentguild.app
+import com.oddessentials.agentguild.scan.CameraChoice
+import com.oddessentials.agentguild.scan.CameraFacts
 import com.oddessentials.agentguild.scan.QrReader
 import java.util.concurrent.Executors
 
@@ -46,19 +50,33 @@ import java.util.concurrent.Executors
 @Composable
 fun Scanner(onScan: (String) -> Unit, onCancel: () -> Unit) {
     val context = LocalContext.current
-    var permitted by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    val headset = remember { CameraChoice.isHorizonOs(context) }
+    val wanted = remember {
+        if (headset) arrayOf(Manifest.permission.CAMERA, CameraChoice.HEADSET_CAMERA) else arrayOf(Manifest.permission.CAMERA)
     }
+    val granted = { permission: String -> ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED }
+    var permitted by remember { mutableStateOf(wanted.all(granted)) }
     var refused by remember { mutableStateOf(false) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        permitted = granted
-        refused = !granted
+    var unavailable by remember { mutableStateOf(false) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        permitted = granted(Manifest.permission.CAMERA)
+        refused = !permitted
     }
-    LaunchedEffect(Unit) { if (!permitted) ask.launch(Manifest.permission.CAMERA) }
+    LaunchedEffect(Unit) { if (!permitted) ask.launch(wanted) }
 
     Box(Modifier.fillMaxSize()) {
-        if (permitted) {
-            CameraPreview(onScan)
+        if (unavailable) {
+            Text(
+                if (headset) {
+                    "Scanning on a headset needs its passthrough camera: a Meta Quest 3 or 3S on Horizon OS v74 or later, with passthrough on. You can paste the sign-in link instead."
+                } else {
+                    "No camera here can scan the sign-in code. You can paste the sign-in link instead."
+                },
+                Modifier.align(Alignment.Center).padding(24.dp),
+                textAlign = TextAlign.Center,
+            )
+        } else if (permitted) {
+            CameraPreview(headset, onScan, onUnavailable = { unavailable = true })
         } else if (refused) {
             Text(
                 "Agent Guild needs the camera to scan the sign-in code. You can paste the sign-in link instead.",
@@ -71,7 +89,7 @@ fun Scanner(onScan: (String) -> Unit, onCancel: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (permitted) {
+            if (permitted && !unavailable) {
                 Text("Point the camera at the sign-in code.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             }
             Button(onClick = onCancel) { Text("Cancel") }
@@ -79,9 +97,9 @@ fun Scanner(onScan: (String) -> Unit, onCancel: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalGetImage::class)
+@OptIn(ExperimentalGetImage::class, ExperimentalCamera2Interop::class)
 @Composable
-private fun CameraPreview(onScan: (String) -> Unit) {
+private fun CameraPreview(headset: Boolean, onScan: (String) -> Unit, onUnavailable: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }
@@ -130,9 +148,23 @@ private fun CameraPreview(onScan: (String) -> Unit) {
                 }
             }
             val camera = provider!!
-            val selector = if (camera.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
+            val cameras = camera.availableCameraInfos
+            val facts = cameras.map { info ->
+                val camera2 = Camera2CameraInfo.from(info)
+                val facing = when (info.lensFacing) {
+                    CameraSelector.LENS_FACING_BACK -> CameraFacts.Facing.Back
+                    CameraSelector.LENS_FACING_FRONT -> CameraFacts.Facing.Front
+                    else -> CameraFacts.Facing.Other
+                }
+                CameraFacts(facing, CameraChoice.source(camera2), CameraChoice.position(camera2))
+            }
+            val chosen = CameraChoice.choose(facts, headset)
+            if (chosen == null) {
+                onUnavailable()
+                return@addListener
+            }
             camera.unbindAll()
-            camera.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+            camera.bindToLifecycle(lifecycleOwner, cameras[chosen].cameraSelector, preview, analysis)
         }, ContextCompat.getMainExecutor(context))
         onDispose {
             disposed = true
