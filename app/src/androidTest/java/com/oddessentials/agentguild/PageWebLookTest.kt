@@ -1,5 +1,6 @@
 package com.oddessentials.agentguild
 
+import android.webkit.WebView
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -106,6 +107,42 @@ class PageWebLookTest {
     @Test fun failedSaveDuringReloadKeepsTheSavedLook() = saveAcrossLoad(renderer = false, beforeFinish = true, failed = true)
 
     @Test
+    fun reloadReadinessRejectsThePreviousDocument() {
+        val (current, load) = compose.runOnIdle { web.webView!! to web.loads }
+        evaluate(current, "window.marked = true")
+        // Even a changed native load count must not make the marked document a replacement.
+        assertFalse(reloadReady(current, load - 1))
+    }
+
+    @Test
+    fun reloadReadinessWaitsForTheDocumentDespiteAnEarlyCompletion() {
+        val (current, load) = compose.runOnIdle { web.webView!! to web.loads }
+        evaluate(current, "window.marked = true")
+        val requested = CountDownLatch(1)
+        manager.route("/finish.js") {
+            requested.countDown()
+            finish.await()
+            FakeServer.Response(200, type = "text/javascript")
+        }
+        compose.runOnIdle { current.evaluateJavascript("location.reload()", null) }
+        compose.waitUntil(30_000) {
+            requested.count == 0L && compose.runOnIdle { web.loads != load && !web.loaded } &&
+                evaluate(current, "Array.isArray(window.agentGuildSkins) && typeof window.marked === 'undefined'") == "true"
+        }
+        // A native completion is not proof that this document's held resource has finished.
+        compose.runOnIdle { current.webViewClient.onPageFinished(current, current.url) }
+        assertTrue(compose.runOnIdle { web.loaded })
+        assertFalse(reloadReady(current, load))
+        finish.countDown()
+        compose.waitUntil(30_000) { reloadReady(current, load) }
+        assertEquals(listOf("grove", "light", "grove", "light"), appearanceAndAddress())
+        // Readiness must not wait for the expected appearance or URL and conceal a regression.
+        evaluate(current, "document.documentElement.dataset.skin = 'vapor', history.replaceState(null, '', '#skin=wrong'), true")
+        assertTrue(reloadReady(current, load))
+        assertEquals(listOf("vapor", "light", "wrong", null), appearanceAndAddress())
+    }
+
+    @Test
     fun destructionDiscardsPostedSaveWorkAndLateCompletion() {
         runBlocking { writes.store.set("race", saved) }
         compose.runOnIdle {
@@ -189,14 +226,13 @@ class PageWebLookTest {
             finish.await()
             FakeServer.Response(200, type = "text/javascript")
         }
-        val first = web.webView!!
-        val load = web.loads
+        val (first, load) = compose.runOnIdle { web.webView!! to web.loads }
         compose.runOnIdle {
             if (renderer) assertTrue(WebViewCompat.getWebViewRenderProcess(first)!!.terminate())
             else first.evaluateJavascript("location.reload()", null)
         }
-        compose.waitUntil(30_000) { finishing.count == 0L && web.loads != load && !web.loaded }
-        val current = web.webView!!
+        compose.waitUntil(30_000) { finishing.count == 0L && compose.runOnIdle { web.loads != load && !web.loaded } }
+        val current = compose.runOnIdle { web.webView!! }
         assertEquals(renderer, current !== first)
         compose.waitUntil(30_000) { !chooser.isOpen }
         assertEquals(listOf("grove", "light", "grove", "light"), appearanceAndAddress())
@@ -224,11 +260,23 @@ class PageWebLookTest {
         assertEquals("true", evaluate(current, "new URLSearchParams(location.hash.slice(1)).get('layout') === 'compact'"))
         assertEquals(2, manager.hits("/"))
 
-        val again = web.loads
-        compose.runOnIdle { current.evaluateJavascript("location.reload()", null) }
-        compose.waitUntil(30_000) { web.loads != again && web.loaded }
+        val again = compose.runOnIdle {
+            assertTrue(web.webView === current)
+            web.loads.also { current.evaluateJavascript("location.reload()", null) }
+        }
+        compose.waitUntil(30_000) { reloadReady(current, again) }
         assertEquals(expectedAppearance, appearanceAndAddress())
         assertEquals(3, manager.hits("/"))
+    }
+
+    private fun reloadReady(current: WebView, previousLoad: Int): Boolean {
+        val (view, load, loaded) = compose.runOnIdle { Triple(web.webView, web.loads, web.loaded) }
+        if (view !== current || load == previousLoad || !loaded) return false
+        // The old document has marked=true; a replacement must finish parsing the fixture itself.
+        return evaluate(current, """Boolean(
+            document.documentElement && document.readyState === 'complete' &&
+            Array.isArray(window.agentGuildSkins) && typeof window.marked === 'undefined'
+        )""") == "true"
     }
 
     private fun appearanceAndAddress() = Json.parse(evaluate(web.webView!!, """(() => {
