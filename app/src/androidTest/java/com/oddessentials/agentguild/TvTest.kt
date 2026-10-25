@@ -1,6 +1,8 @@
 package com.oddessentials.agentguild
 
 import android.content.Intent
+import android.graphics.drawable.AdaptiveIconDrawable
+import android.os.Build
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -19,6 +21,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -147,5 +150,10 @@ class TvTest {
         assertEquals(listOf(MainActivity::class.java.name), launchers(Intent.CATEGORY_LAUNCHER))
         assertEquals(listOf(MainActivity::class.java.name), launchers(Intent.CATEGORY_LEANBACK_LAUNCHER))
         assertNotEquals(0, context.applicationInfo.banner)
+        val icon = context.packageManager.getApplicationIcon(context.applicationInfo)
+        assertTrue(icon is AdaptiveIconDrawable)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            assertNotNull((icon as AdaptiveIconDrawable).monochrome)
+        }
     }
 }
