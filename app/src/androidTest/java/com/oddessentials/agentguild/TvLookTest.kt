@@ -85,7 +85,7 @@ class TvLookTest {
 
     private fun openBoard(): Pair<ActivityScenario<MainActivity>, android.webkit.WebView> {
         val scenario = harness.launch()
-        compose.onNodeWithTag("computer:Fake").click()
+        harness.openComputer("Fake")
         harness.next(harness.ready)
         return scenario to harness.webView(scenario)
     }
@@ -437,7 +437,7 @@ class TvLookTest {
     fun theListOpensThePanelForAComputer() {
         saveLook(Look("orbital"))
         harness.launch()
-        compose.onNode(hasContentDescription("More for Fake")).click()
+        harness.moreFor("Fake")
         compose.onNodeWithText("Skin and Theme").click()
         harness.next(harness.ready)
         compose.waitUntil(10_000) { panelShown() }
@@ -446,7 +446,7 @@ class TvLookTest {
 
     private fun openPanelFromTheList(): ActivityScenario<MainActivity> {
         val scenario = harness.launch()
-        compose.onNode(hasContentDescription("More for Fake")).click()
+        harness.moreFor("Fake")
         compose.onNodeWithText("Skin and Theme").click()
         harness.next(harness.ready)
         compose.waitUntil(10_000) { panelShown() }
@@ -506,10 +506,10 @@ class TvLookTest {
         harness.app.tv = TvCheck { false }
         val scenario = harness.launch()
         assertEquals(0, compose.onAllNodes(hasContentDescription("More for the demo")).fetchSemanticsNodes().size)
-        compose.onNode(hasContentDescription("More for Fake")).click()
+        harness.moreFor("Fake")
         assertEquals(0, compose.onAllNodesWithTextCount("Skin and Theme"))
         pressBack()
-        compose.onNodeWithTag("computer:Fake").click()
+        harness.openComputer("Fake")
         harness.next(harness.ready)
         val web = harness.webView(scenario)
         pressMenu()
@@ -524,7 +524,7 @@ class TvLookTest {
         saveLook(Look("orbital"))
         saveLook(Look("grove"), key = Looks.LOOK_DEMO)
         harness.launch()
-        compose.onNode(hasContentDescription("More for Fake")).click()
+        harness.moreFor("Fake")
         compose.onNodeWithText("Remove").click()
         compose.waitUntil(10_000) { savedLook() == null }
         assertEquals(Look("grove"), savedLook(Looks.LOOK_DEMO))
@@ -535,7 +535,7 @@ class TvLookTest {
         val scratch = harness.addManager("Scratch")
         saveLook(Look("orbital", Theme.Dark), key = scratch.id)
         val scenario = harness.launch()
-        compose.onNodeWithTag("computer:Scratch").click()
+        harness.openComputer("Scratch")
         harness.next(harness.ready)
         val web = harness.webView(scenario)
         assertEquals("orbital", skin(web))

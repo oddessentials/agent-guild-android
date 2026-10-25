@@ -58,7 +58,7 @@ class TvTest {
 
     private fun open(tv: Boolean, name: String = "Fake"): ActivityScenario<MainActivity> {
         harness.app.tv = TvCheck { tv }
-        return harness.launch().also { compose.onNodeWithTag("computer:$name").click() }
+        return harness.launch().also { harness.openComputer("$name") }
     }
 
     private fun pressBack() {

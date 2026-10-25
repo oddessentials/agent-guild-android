@@ -4,7 +4,9 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -63,6 +65,20 @@ class Harness(private val compose: ComposeTestRule) {
     }
 
     fun addManager(name: String = "Scratch") = add(managerLink, name)
+
+    /** Opens [name]'s page from the list, once the store's first read has listed it. */
+    fun openComputer(name: String) {
+        listed(name)
+        compose.onNodeWithTag("computer:$name").click()
+    }
+
+    /** Opens [name]'s ⋮ menu from the list, once the store's first read has listed it. */
+    fun moreFor(name: String) {
+        listed(name)
+        compose.onNode(hasContentDescription("More for $name")).click()
+    }
+
+    private fun listed(name: String) = compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("computer:$name") == 1 }
 
     fun close() {
         scenarios.forEach { it.close() }

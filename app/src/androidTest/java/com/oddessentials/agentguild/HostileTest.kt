@@ -57,7 +57,7 @@ class HostileTest {
     }
 
     private fun open() = harness.launch().also {
-        compose.onNodeWithTag("computer:Fake").click()
+        harness.openComputer("Fake")
         harness.next(harness.ready)
     }
 
