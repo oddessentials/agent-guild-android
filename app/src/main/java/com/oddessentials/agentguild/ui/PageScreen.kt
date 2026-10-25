@@ -211,9 +211,7 @@ private fun WebPage(
         // Posted, as the screen's navigation changes only on the main thread and a save can resume off it.
         LookChooser(web, scope, closed = { ContextCompat.getMainExecutor(context).execute { if (scope.isActive) currentOnLookClosed() } }) { saved ->
             app.looks.set(lookKey, saved)
-            // At once, so a load that starts before the store's next value uses it.
-            web.look = saved
-            web.keepInAddress(saved)
+            web.applySavedLook(saved)
         }
     }
     LaunchedEffect(chooser, web.loads) { chooser.loadChanged(web.loads) }

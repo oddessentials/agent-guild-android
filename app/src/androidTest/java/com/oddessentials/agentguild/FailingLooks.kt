@@ -17,8 +17,10 @@ import kotlinx.coroutines.cancel
 class FailingLooks(app: AgentGuildApp) : AutoCloseable {
     private class Writes : Serializer<Map<String, Look>> by LookSerializer {
         @Volatile var failing = false
+        @Volatile var beforeWrite: suspend () -> Unit = {}
 
         override suspend fun writeTo(t: Map<String, Look>, output: OutputStream) {
+            beforeWrite()
             if (failing) throw IOException("disk full")
             LookSerializer.writeTo(t, output)
         }
@@ -32,6 +34,13 @@ class FailingLooks(app: AgentGuildApp) : AutoCloseable {
         get() = writes.failing
         set(value) {
             writes.failing = value
+        }
+
+    /** Lets a race test hold a write until it has put the page at the required load boundary. */
+    var beforeWrite: suspend () -> Unit
+        get() = writes.beforeWrite
+        set(value) {
+            writes.beforeWrite = value
         }
 
     override fun close() = scope.cancel()

@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import com.oddessentials.agentguild.BuildConfig
@@ -124,10 +125,13 @@ class PageWeb(
         if (loaded && load == loads) webView?.evaluateJavascript(Looks.restoreScript(skin, theme), null)
     }
 
-    /** Puts [look] in the current document's address, so a reload the page starts itself shows it. */
-    fun keepInAddress(look: Look) {
-        // Posted: a save can resume off the main thread, and a WebView takes calls only on its own.
-        webView?.let { view -> view.post { if (view === webView && loaded) view.evaluateJavascript(Looks.addressScript(look), null) } }
+    /** Called only after persistence succeeds. A document still loading takes [look] on completion. */
+    fun applySavedLook(saved: Look) {
+        // A save can resume off the main thread. Target the current view, including a replacement.
+        ContextCompat.getMainExecutor(context).execute {
+            look = saved
+            if (compact && loaded && !left) webView?.evaluateJavascript(Looks.savedScript(look), null)
+        }
     }
 
     fun destroy() {
@@ -218,6 +222,9 @@ class PageWeb(
 
             override fun onPageFinished(view: WebView, url: String?) {
                 if (view !== webView || left || !Navigation.staysOnManager(url, page.origin)) return
+                // A save may have completed since this document's URL was chosen. The loaded guard
+                // also ignores completion callbacks from hash changes, preserving later previews.
+                if (!loaded && compact) view.evaluateJavascript(Looks.savedScript(look), null)
                 loaded = true
                 if (shownView != loadedView) view.evaluateJavascript(Bridge.viewScript(shownView), null)
             }

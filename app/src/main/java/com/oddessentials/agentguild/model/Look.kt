@@ -72,7 +72,7 @@ object Looks {
     }
 
     /**
-     * Shows [skin] and [theme] without loading the page again. [Theme.System] resolves as the page's
+     * Shows a listed [skin] and [theme] without loading the page again. [Theme.System] resolves as the page's
      * `theme.js` does without `&theme=`: a theme the page saved, or else the system's.
      */
     fun previewScript(skin: String?, theme: Theme): String {
@@ -89,7 +89,8 @@ object Looks {
             (() => {
               const root = document.documentElement;
               const skin = ${skin?.let { "'$it'" } ?: "null"};
-              if (skin !== null) root.dataset.skin = skin;$resolve
+              const skins = window.agentGuildSkins;
+              if (skin !== null && Array.isArray(skins) && skins.some(s => s && s.id === skin)) root.dataset.skin = skin;$resolve
               root.dataset.theme = theme;
             })()
         """.trimIndent()
@@ -122,6 +123,9 @@ object Looks {
             })()
         """.trimIndent()
     }
+
+    /** Reconciles a successful save with this document and with any reload it starts itself. */
+    fun savedScript(look: Look) = previewScript(look.skin, look.theme) + ";\n" + addressScript(look)
 
     /** The saved looks as JSON text, keyed by computer id or [LOOK_DEMO]. */
     fun encode(looks: Map<String, Look>): String = looks.entries.joinToString(",", "{\"looks\":{", "}}") { (key, look) ->
