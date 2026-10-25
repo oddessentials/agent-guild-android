@@ -572,7 +572,13 @@ class TvLookTest {
     @Test
     fun cancelLeavesMissingAttributesMissing() {
         val (_, web) = openBoard()
+        // Wait for the initial saved look and its read-back before changing the page's attributes.
+        openPanel()
+        choose("look-cancel")
+        untilPanelCloses()
+        // Cancel queues restoration first; evaluate waits for the following deletion to finish.
         evaluate(web, "delete document.documentElement.dataset.skin, delete document.documentElement.dataset.theme, true")
+        assertEquals("true", evaluate(web, "!document.documentElement.hasAttribute('data-skin') && !document.documentElement.hasAttribute('data-theme')"))
         openPanel()
         choose("skin:orbital")
         choose("theme:dark")
