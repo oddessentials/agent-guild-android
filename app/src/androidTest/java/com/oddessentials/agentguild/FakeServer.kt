@@ -17,32 +17,48 @@ import kotlin.concurrent.thread
  * A small HTTP/1.1 server on the device's loopback interface, in the test process, for the cases the
  * real manager can't stage: another origin, a redirect, a frame from elsewhere.
  */
-class FakeServer(val port: Int) : AutoCloseable {
+class FakeServer internal constructor(private val socket: ServerSocket) : AutoCloseable {
+    constructor(port: Int) : this(ServerSocket().apply {
+        reuseAddress = true
+        bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port))
+    })
+
     data class Request(val method: String, val path: String, val body: String)
     data class Response(val status: Int, val body: String = "", val type: String = "text/html", val headers: Map<String, String> = emptyMap())
 
+    val port = socket.localPort
     val origin = "http://127.0.0.1:$port"
     val requests = CopyOnWriteArrayList<Request>()
     private val arrivals = LinkedBlockingQueue<Request>()
     private val routes = ConcurrentHashMap<String, (Request) -> Response>()
-    private val socket = ServerSocket().apply {
-        reuseAddress = true
-        bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port))
-    }
+    private val clients = mutableMapOf<Socket, Thread>()
 
-    init {
-        thread(isDaemon = true, name = "FakeServer:$port") {
-            while (!socket.isClosed) {
-                val client = try {
-                    socket.accept()
-                } catch (_: Exception) {
-                    break
-                }
-                thread(isDaemon = true) {
-                    try {
-                        serve(client)
-                    } catch (_: IOException) {
+    private val accepting = thread(isDaemon = true, name = "FakeServer:$port") {
+        while (!socket.isClosed) {
+            val client = try {
+                socket.accept()
+            } catch (error: IOException) {
+                if (!socket.isClosed) throw error
+                break
+            }
+            synchronized(clients) {
+                // accept() may have returned a connection just as close() stopped the listener.
+                if (socket.isClosed) {
+                    client.close()
+                } else {
+                    val worker = thread(start = false, isDaemon = true) {
+                        try {
+                            serve(client)
+                        } catch (_: IOException) {
+                            // A cancelled WebView request or fixture teardown can close the socket.
+                        } catch (error: InterruptedException) {
+                            if (!socket.isClosed) throw error
+                        } finally {
+                            synchronized(clients) { clients.remove(client) }
+                        }
                     }
+                    clients[client] = worker
+                    worker.start()
                 }
             }
         }
@@ -131,5 +147,15 @@ class FakeServer(val port: Int) : AutoCloseable {
         }
     }
 
-    override fun close() = socket.close()
+    override fun close() {
+        val workers = synchronized(clients) {
+            socket.close()
+            clients.keys.forEach { it.close() }
+            clients.values.toList()
+        }
+        // A pooled WebView connection must not carry the next test's request to this fixture.
+        accepting.join()
+        workers.forEach { it.interrupt() }
+        workers.forEach { it.join() }
+    }
 }
