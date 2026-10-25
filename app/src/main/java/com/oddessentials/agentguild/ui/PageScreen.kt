@@ -61,12 +61,14 @@ import com.oddessentials.agentguild.model.Page
 import com.oddessentials.agentguild.model.PageView
 import com.oddessentials.agentguild.model.Recovery
 import com.oddessentials.agentguild.web.PageWeb
+import kotlinx.coroutines.isActive
 
 /**
  * A computer's page, or the demo. A saved computer is checked whenever the screen resumes: a
  * rejected token or a changed address offers to sign in again, and other failures keep the page
  * with a banner. On a TV, the page is the compact Yard, full screen, and Back closes the app; the
- * Menu key, or [openLook] from the list, opens the Skin and Theme panel over it.
+ * Menu key, or [openLook] from the list, opens the Skin and Theme panel over it. Opened from the
+ * list, Save or Cancel goes back to the list.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,6 +139,7 @@ fun PageScreen(destination: Destination, openLook: Boolean, onBack: () -> Unit, 
                         lookRequested = lookRequested,
                         onLookRequest = { lookRequested = true },
                         onLookRequestHandled = { lookRequested = false },
+                        onLookClosed = { if (openLook) onBack() },
                     )
                 }
                 problem != null -> CantConnect(
@@ -168,6 +171,7 @@ private fun WebPage(
     lookRequested: Boolean,
     onLookRequest: () -> Unit,
     onLookRequestHandled: () -> Unit,
+    onLookClosed: () -> Unit,
 ) {
     val context = LocalContext.current
     val app = context.app
@@ -201,12 +205,15 @@ private fun WebPage(
     // Only when the store's value changes, so a recomposition can't put back a look older than one just saved.
     LaunchedEffect(web, look) { web.look = look }
     val currentLook by rememberUpdatedState(look)
+    val currentOnLookClosed by rememberUpdatedState(onLookClosed)
     val scope = rememberCoroutineScope()
     val chooser = remember(web) {
-        LookChooser(web, scope) { saved ->
+        // Posted, as the screen's navigation changes only on the main thread and a save can resume off it.
+        LookChooser(web, scope, closed = { ContextCompat.getMainExecutor(context).execute { if (scope.isActive) currentOnLookClosed() } }) { saved ->
             app.looks.set(lookKey, saved)
             // At once, so a load that starts before the store's next value uses it.
             web.look = saved
+            web.keepInAddress(saved)
         }
     }
     LaunchedEffect(chooser, web.loads) { chooser.loadChanged(web.loads) }

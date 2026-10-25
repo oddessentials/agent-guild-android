@@ -84,6 +84,18 @@ class LookTest {
     }
 
     @Test
+    fun theAddressTakesTheLookAndKeepsItsOtherParameters() {
+        val script = Looks.addressScript(Look("orbital", Theme.Dark))
+        assertTrue(script.contains("new URLSearchParams(location.hash.slice(1))"))
+        assertTrue(script.contains("params.set('skin', 'orbital');"))
+        assertTrue(script.contains("params.set('theme', 'dark');"))
+        assertTrue(script.contains("history.replaceState("))
+        val system = Looks.addressScript(Look.Default)
+        assertTrue(system.contains("params.delete('skin');"))
+        assertTrue(system.contains("params.delete('theme');"))
+    }
+
+    @Test
     fun aChosenThemeIsSetAsIs() {
         val script = Looks.previewScript("orbital", Theme.Dark)
         assertTrue(script.contains("const skin = 'orbital';"))

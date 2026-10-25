@@ -109,6 +109,20 @@ object Looks {
         """.trimIndent()
     }
 
+    /** Writes [look] into the page's address as [Page.url] does, keeping its other parameters, without loading it. */
+    fun addressScript(look: Look): String {
+        val setSkin = look.skin?.let { "params.set('skin', '$it');" } ?: "params.delete('skin');"
+        val setTheme = look.theme.value?.let { "params.set('theme', '$it');" } ?: "params.delete('theme');"
+        return """
+            (() => {
+              const params = new URLSearchParams(location.hash.slice(1));
+              $setSkin
+              $setTheme
+              history.replaceState(history.state, '', location.pathname + location.search + '#' + params);
+            })()
+        """.trimIndent()
+    }
+
     /** The saved looks as JSON text, keyed by computer id or [LOOK_DEMO]. */
     fun encode(looks: Map<String, Look>): String = looks.entries.joinToString(",", "{\"looks\":{", "}}") { (key, look) ->
         val fields = listOfNotNull(look.skin?.let { "\"skin\":${Json.quote(it)}" }, look.theme.value?.let { "\"theme\":${Json.quote(it)}" })

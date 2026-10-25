@@ -209,6 +209,84 @@ class TvLookTest {
         assertFalse(scenario.state == Lifecycle.State.DESTROYED)
     }
 
+    /** Reloads the current document as the page itself would, and waits for the new one. */
+    private fun pageReloads(web: android.webkit.WebView) {
+        evaluate(web, "setTimeout(() => location.reload(), 0), true")
+        harness.next(harness.ready)
+    }
+
+    @Test
+    fun aSavedLookSurvivesAReloadThePageStarts() {
+        saveLook(Look("grove", Theme.Light))
+        val (_, web) = openBoard()
+        openPanel()
+        choose("skin:orbital")
+        choose("theme:dark")
+        choose("look-save")
+        untilPanelCloses()
+        assertEquals("#token=$token&layout=compact&expand=none&skin=orbital&theme=dark&view=yard", evaluateString(web, "location.hash"))
+
+        pageReloads(web)
+        assertEquals(Look("orbital", Theme.Dark), savedLook())
+        assertEquals("orbital", skin(web))
+        assertEquals("dark", theme(web))
+    }
+
+    @Test
+    fun aSavedLookIsAddedToAnAddressWithoutOneAndKeepsTheOtherParameters() {
+        val (_, web) = openBoard()
+        evaluate(web, "history.replaceState(null, '', location.pathname + location.hash + '&other=kept'), true")
+        openPanel()
+        choose("skin:grove")
+        choose("theme:light")
+        choose("look-save")
+        untilPanelCloses()
+        assertEquals("#token=$token&layout=compact&expand=none&view=yard&other=kept&skin=grove&theme=light", evaluateString(web, "location.hash"))
+
+        pageReloads(web)
+        assertEquals("grove", skin(web))
+        assertEquals("light", theme(web))
+    }
+
+    @Test
+    fun systemSurvivesAReloadThePageStartsWithoutTheOldTheme() {
+        saveLook(Look("orbital", Theme.Dark))
+        val (_, web) = openBoard()
+        openPanel()
+        choose("theme:system")
+        choose("look-save")
+        untilPanelCloses()
+        assertEquals("#token=$token&layout=compact&expand=none&skin=orbital&view=yard", evaluateString(web, "location.hash"))
+
+        pageReloads(web)
+        assertEquals(Look("orbital", Theme.System), savedLook())
+        assertEquals("orbital", skin(web))
+        val system = evaluate(web, "matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'")
+        assertEquals(system, evaluate(web, "document.documentElement.dataset.theme"))
+    }
+
+    @Test
+    fun aFailedSaveLeavesTheAddressAndAReloadShowsTheSavedLook() {
+        val writes = failingLooks()
+        saveLook(Look("grove", Theme.Light))
+        writes.failing = true
+        val (_, web) = openBoard()
+        val address = evaluateString(web, "location.hash")
+        openPanel()
+        choose("skin:orbital")
+        choose("theme:dark")
+        choose("look-save")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-error") == 1 }
+        assertEquals(address, evaluateString(web, "location.hash"))
+        choose("look-cancel")
+        untilPanelCloses()
+
+        pageReloads(web)
+        assertEquals(Look("grove", Theme.Light), savedLook())
+        assertEquals("grove", skin(web))
+        assertEquals("light", theme(web))
+    }
+
     @Test
     fun lightThenSystemThenCancelRemovesTheOverrideThenPutsLightBack() {
         saveLook(Look(theme = Theme.Light))
@@ -364,6 +442,56 @@ class TvLookTest {
         harness.next(harness.ready)
         compose.waitUntil(10_000) { panelShown() }
         compose.onNodeWithTag("skin:orbital").assertIsSelected()
+    }
+
+    private fun openPanelFromTheList(): ActivityScenario<MainActivity> {
+        val scenario = harness.launch()
+        compose.onNode(hasContentDescription("More for Fake")).click()
+        compose.onNodeWithText("Skin and Theme").click()
+        harness.next(harness.ready)
+        compose.waitUntil(10_000) { panelShown() }
+        return scenario
+    }
+
+    private fun untilTheList(scenario: ActivityScenario<MainActivity>) {
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("computer:Fake") == 1 }
+        assertFalse(panelShown())
+        assertFalse(scenario.state == Lifecycle.State.DESTROYED)
+    }
+
+    @Test
+    fun saveFromTheListGoesBackToTheList() {
+        val scenario = openPanelFromTheList()
+        choose("skin:orbital")
+        choose("look-save")
+        untilTheList(scenario)
+        assertEquals(Look("orbital"), savedLook())
+    }
+
+    @Test
+    fun cancelBackAndMenuFromTheListGoBackToTheList() {
+        saveLook(Look("grove"))
+        for (close in listOf({ choose("look-cancel") }, ::pressBack, ::pressMenu)) {
+            val scenario = openPanelFromTheList()
+            choose("skin:orbital")
+            close()
+            untilTheList(scenario)
+            assertEquals(Look("grove"), savedLook())
+            scenario.close()
+        }
+    }
+
+    @Test
+    fun aFailedSaveFromTheListStaysOnThePanel() {
+        val writes = failingLooks()
+        writes.failing = true
+        val scenario = openPanelFromTheList()
+        choose("skin:orbital")
+        choose("look-save")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-error") == 1 }
+        assertTrue(panelShown())
+        choose("look-cancel")
+        untilTheList(scenario)
     }
 
     @Test

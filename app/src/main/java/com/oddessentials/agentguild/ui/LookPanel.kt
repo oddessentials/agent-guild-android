@@ -48,7 +48,13 @@ import kotlinx.coroutines.launch
  * one closes it, and drops any unsaved preview, since the page then loads the saved look.
  */
 @Stable
-class LookChooser(private val web: LookPage, private val scope: CoroutineScope, private val save: suspend (Look) -> Unit) {
+class LookChooser(
+    private val web: LookPage,
+    private val scope: CoroutineScope,
+    /** After a successful Save or a Cancel, not when a new document closes the panel. */
+    private val closed: () -> Unit = {},
+    private val save: suspend (Look) -> Unit,
+) {
     /** What the page offered and showed when the panel opened; null while it is closed. */
     var page by mutableStateOf<PageLook?>(null)
         private set
@@ -93,6 +99,7 @@ class LookChooser(private val web: LookPage, private val scope: CoroutineScope, 
         if (saving) return
         web.restore(load, shown.shownSkin, shown.theme)
         close()
+        closed()
     }
 
     /** Closes only once the write succeeded. When it fails, the saved look is unchanged and the panel says so. */
@@ -105,7 +112,10 @@ class LookChooser(private val web: LookPage, private val scope: CoroutineScope, 
         scope.launch {
             try {
                 save(look)
-                if (load == savedFor) close()
+                if (load == savedFor) {
+                    close()
+                    closed()
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

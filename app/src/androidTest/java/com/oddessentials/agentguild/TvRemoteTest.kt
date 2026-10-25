@@ -149,9 +149,7 @@ class TvRemoteTest {
         return scenario to harness.webView(scenario)
     }
 
-    @Test
-    fun theRemoteChoosesASkinFromTheList() {
-        val scratch = harness.addManager("Scratch")
+    private fun openPanelFromTheList(): ActivityScenario<MainActivity> {
         val scenario = harness.launch()
         compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("computer:Scratch") == 1 }
         moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("computer:Scratch"))
@@ -160,9 +158,24 @@ class TvRemoteTest {
         moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasText("Skin and Theme"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         harness.next(harness.ready)
-        val web = harness.webView(scenario)
         // The panel opens with the focus on the skin the page shows.
         compose.waitUntil(10_000) { focusInPanel() }
+        return scenario
+    }
+
+    /** Back on the list, where the remote reaches the computer's ⋮ menu again. */
+    private fun backOnTheList(scenario: ActivityScenario<MainActivity>) {
+        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("computer:Scratch") == 1 }
+        assertEquals(0, compose.onAllNodesWithTagCount("look-panel"))
+        assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("computer:Scratch"))
+        moveTo(KeyEvent.KEYCODE_DPAD_RIGHT, hasContentDescription("More for Scratch"))
+    }
+
+    @Test
+    fun theRemoteChoosesASkinFromTheListAndGoesBackToIt() {
+        val scratch = harness.addManager("Scratch")
+        val scenario = openPanelFromTheList()
         assertTrue(isFocused(hasTestTag("skin:professional")))
 
         moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("skin:grove"))
@@ -174,11 +187,20 @@ class TvRemoteTest {
         moveTo(KeyEvent.KEYCODE_DPAD_RIGHT, hasTestTag("look-save"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
 
-        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("look-panel") == 0 }
+        backOnTheList(scenario)
         assertEquals(Look("grove", Theme.Dark), runBlocking { harness.app.looks.current()[scratch.id] })
-        assertEquals("grove", evaluateString(web, "document.documentElement.dataset.skin"))
-        assertEquals("dark", evaluateString(web, "document.documentElement.dataset.theme"))
-        compose.waitUntil(5_000) { harness.webViewHasFocus(scenario) }
+    }
+
+    @Test
+    fun backFromThePanelOpenedFromTheListGoesBackToTheList() {
+        val scratch = harness.addManager("Scratch")
+        val scenario = openPanelFromTheList()
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("skin:grove"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        press(KeyEvent.KEYCODE_BACK)
+
+        backOnTheList(scenario)
+        assertEquals(null, runBlocking { harness.app.looks.current()[scratch.id] })
     }
 
     @Test

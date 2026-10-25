@@ -50,7 +50,8 @@ class LookChooserTest {
     private val scope = TestScope()
     private val saves = mutableListOf<Look>()
     private var write: CompletableDeferred<Unit>? = null
-    private val chooser = LookChooser(page, scope) { look ->
+    private var closings = 0
+    private val chooser = LookChooser(page, scope, closed = { closings++ }) { look ->
         write?.await()
         saves += look
     }
@@ -238,5 +239,29 @@ class LookChooserTest {
         assertFalse(chooser.isOpen)
         assertFalse(chooser.failed)
         assertNull(chooser.page)
+    }
+
+    @Test
+    fun cancelAndASuccessfulSaveReportTheClosing() {
+        opened()
+        chooser.cancel()
+        assertEquals(1, closings)
+        opened()
+        chooser.save()
+        scope.advanceUntilIdle()
+        assertEquals(2, closings)
+    }
+
+    @Test
+    fun aFailedSaveOrANewDocumentReportsNoClosing() {
+        opened()
+        write = CompletableDeferred<Unit>().apply { completeExceptionally(IOException("disk full")) }
+        chooser.save()
+        scope.advanceUntilIdle()
+        assertTrue(chooser.failed)
+        page.newDocument()
+        chooser.loadChanged(page.loads)
+        assertFalse(chooser.isOpen)
+        assertEquals(0, closings)
     }
 }

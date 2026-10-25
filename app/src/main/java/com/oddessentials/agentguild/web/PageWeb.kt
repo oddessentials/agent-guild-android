@@ -124,6 +124,12 @@ class PageWeb(
         if (loaded && load == loads) webView?.evaluateJavascript(Looks.restoreScript(skin, theme), null)
     }
 
+    /** Puts [look] in the current document's address, so a reload the page starts itself shows it. */
+    fun keepInAddress(look: Look) {
+        // Posted: a save can resume off the main thread, and a WebView takes calls only on its own.
+        webView?.let { view -> view.post { if (view === webView && loaded) view.evaluateJavascript(Looks.addressScript(look), null) } }
+    }
+
     fun destroy() {
         webView?.let(::dispose)
         webView = null
