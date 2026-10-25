@@ -97,15 +97,17 @@ class HostileTest {
             </script>""",
         )
         val web = harness.webView(open())
-        evaluate(
+        val attached = evaluate(
             web,
             """(() => {
                 const frame = Object.assign(document.createElement('iframe'), { src: '${elsewhere.origin}/frame' });
                 frame.allow = 'microphone';
                 document.body.append(frame);
-                return true;
+                return frame.isConnected;
             })()""",
         )
+        assertEquals("true", attached)
+        assertEquals("/frame", elsewhere.await("/frame").path)
         assertEquals("/result?NotAllowedError", elsewhere.await("/result").path)
 
         evaluate(
