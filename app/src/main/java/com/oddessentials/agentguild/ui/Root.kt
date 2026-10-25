@@ -22,7 +22,8 @@ import com.oddessentials.agentguild.model.Destination
 sealed interface Screen {
     data object List : Screen
     data class Add(val updating: String? = null, val scanFirst: Boolean = false) : Screen
-    data class Page(val destination: Destination) : Screen
+    /** [look] opens the TV's Skin and Theme panel once the page has loaded. */
+    data class Page(val destination: Destination, val look: Boolean = false) : Screen
 
     val key: String
         get() = when (this) {
@@ -31,7 +32,7 @@ sealed interface Screen {
             is Page -> when (destination) {
                 Destination.Demo -> "page:demo"
                 is Destination.Saved -> "page:${destination.id}"
-            }
+            } + if (look) ":look" else ""
         }
 
     companion object {
@@ -40,7 +41,7 @@ sealed interface Screen {
             return when (parts[0]) {
                 "list" -> List
                 "add" -> Add(parts.getOrNull(1)?.ifEmpty { null }, parts.getOrNull(2) == "true")
-                "page" -> parts.getOrNull(1)?.let { Page(if (it == "demo") Destination.Demo else Destination.Saved(it)) }
+                "page" -> parts.getOrNull(1)?.let { Page(if (it == "demo") Destination.Demo else Destination.Saved(it), parts.getOrNull(2) == "look") }
                 else -> null
             }
         }
@@ -66,10 +67,15 @@ fun Root() {
     val top = stack.last()
     states.SaveableStateProvider(top.key) {
         when (top) {
-            Screen.List -> ComputerList(onOpen = { push(Screen.Page(it)) }, onAdd = { updating -> push(Screen.Add(updating)) })
+            Screen.List -> ComputerList(
+                onOpen = { push(Screen.Page(it)) },
+                onLook = { push(Screen.Page(it, look = true)) },
+                onAdd = { updating -> push(Screen.Add(updating)) },
+            )
             is Screen.Add -> AddComputer(updating = top.updating, scanFirst = top.scanFirst, onDone = pop)
             is Screen.Page -> PageScreen(
                 destination = top.destination,
+                openLook = top.look,
                 onBack = pop,
                 onSignIn = { id, scan -> push(Screen.Add(id, scan)) },
             )

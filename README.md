@@ -45,19 +45,34 @@ agent-guild's `docs/api.md`, **The page in the Agent Guild app → Android**, is
 
 The page needs agent-guild's change "feat: support Agent Guild in the Android app web view". The app's minimum Agent Guild version is the first release that carries it, 1.9.0 (`Health.MINIMUM_VERSION`). A development build reports `0.0.0-development` and is accepted, as the Apple app does.
 
-The app accepts `ready` and `open`, and ignores `expand` and `look`.
+The app accepts `ready` and `open`, and ignores `look`. On a TV it loads the compact layout with `&expand=none`, so the page sends no `expand`.
+
+### Skin and theme on a TV
+
+The compact page keeps no skin or theme of its own, so on a TV the app chooses them. **Skin and Theme**, in a computer's or the demo's ⋮ menu or from the remote's Menu key over the Yard, opens a panel beside it:
+
+- The skins are the page's own `window.agentGuildSkins`, read once the page has loaded, so the app never copies the list. A skin counts only with an id matching `^[a-z]{1,40}$` and a name of at most 40 characters; the theme is System, Light or Dark.
+- Each choice shows at once: the app sets `data-skin` and `data-theme` on the page, which the Yard redraws on, and loads nothing. A skin the page doesn't list is never set. System resolves as the page's `theme.js` does without `&theme=`.
+- Save keeps the choice for that computer, or for the demo, and closes the panel only once the write succeeded; otherwise the saved one is unchanged and the panel says so.
+- Opened from the list, Save or Cancel goes back to the list; opened with Menu, they stay on the Yard.
+- Cancel, Back and Menu put back the `data-skin` and `data-theme` the page showed when the panel opened, including a skin the page doesn't list; a missing attribute stays missing.
+- Every load the app starts adds the saved skin and theme to the compact URL: `&skin=<id>&theme=<light|dark>`, with no `&theme=` for System. Agent Guild 1.5.0 and later read both. A successful Save also writes them into the current page's address with `history.replaceState`, keeping its other parameters, so a reload the page starts itself shows the saved look.
+- A new document closes the panel: the app's own load, one the page starts itself, or a new `WebView` after the renderer is gone. An answer from the page counts only for the document that asked.
+- The Menu key is taken in `MainActivity.dispatchKeyEvent`, before the page sees it, and only while a TV page shows. A held key acts once.
+- The list starts with the focus on a control, so the remote needs no press to get one: the row or ⋮ it was left from, else the first computer, else Add Computer.
 
 ## WebView security
 
 No new navigation framework: the app uses `WebViewClient` and `WebChromeClient` directly.
 
-- **First load:** only a URL built from a saved, validated computer: `<address>/#token=<token>` plus `&view=`.
+- **First load:** only a URL built from a saved, validated computer: `<address>/#token=<token>` plus `&view=`, and on a TV the compact layout's `&layout=compact&expand=none` with the saved skin and theme.
 - **Navigation and redirects:** `shouldOverrideUrlLoading` cancels any main-frame load whose origin isn't the manager's. A link the user followed opens in a Custom Tab instead, only for `http` and `https`. Server redirects reach the same check, and are never opened outside. As a second guard, `onPageStarted` stops a main-frame page whose origin isn't the manager's and shows the error screen; it is what stops a form posted elsewhere, which `shouldOverrideUrlLoading` never sees. A URL that contains the token never goes to a Custom Tab, from a link or from the bridge.
 - **New windows:** `setSupportMultipleWindows(true)`, and `onCreateWindow` returns `false`. The page sends links through the bridge instead.
 - **Renderer recovery:** `onRenderProcessGone` destroys the `WebView`, creates a new one and loads the same validated URL.
 - **Settings:** JavaScript and DOM storage on; file and content access off; mixed content never allowed; no `addJavascriptInterface`; `setWebContentsDebuggingEnabled` in debug builds only.
 - **Microphone:** `onPermissionRequest` grants only `PermissionRequest.RESOURCE_AUDIO_CAPTURE`, only when the request's origin is exactly the manager's, and only after the user has granted the `RECORD_AUDIO` runtime permission; the app asks for it at the page's first request. Every other request, origin or resource is denied.
 - **Storage of computers:** name, address and token in one DataStore file, `files/datastore/computers.sealed`, encrypted with a 256-bit AES-GCM key from the Android Keystore. A file that can't be opened, such as one without its key, reads as an empty list. The page keeps its own copy of the token in the `WebView`'s local storage, so `dataExtractionRules` and `fullBackupContent` keep all of the app's data out of cloud backups and device transfers, and `allowBackup` is off. The link being typed into Add Computer isn't saved with the activity's state.
+- **Storage of looks:** each TV page's skin and theme, keyed by computer id or `demo`, in `files/datastore/looks.json`. It holds nothing secret, so it isn't sealed; the same backup rules keep it on the device. Removing a computer removes its look.
 
 ## What was verified on the emulator
 
@@ -159,11 +174,11 @@ adb logcat -s AGPROBE:I
 
 Kotlin and Compose, package `com.oddessentials.agentguild`, in `app/`:
 
-- `model/`: what the JVM tests cover. `SignInLink` (the parser above), `Origin`, `Health` (the `/api/v1/info` check and its `HealthProblem` messages, which read like the Apple app's), `Bridge`, `Navigation`, `Microphone`, `Recovery`, and `Json`, a strict JSON reader: Android's `org.json` accepts single quotes, comments and unquoted names, and isn't available to JVM tests.
-- `data/`: the list of computers in DataStore, sealed by `AesGcmSealer`.
+- `model/`: what the JVM tests cover. `SignInLink` (the parser above), `Origin`, `Health` (the `/api/v1/info` check and its `HealthProblem` messages, which read like the Apple app's), `Bridge`, `Navigation`, `Microphone`, `Recovery`, `Look` (the TV's skin and theme, and the page's skin list), and `Json`, a strict JSON reader: Android's `org.json` accepts single quotes, comments and unquoted names, and isn't available to JVM tests.
+- `data/`: the list of computers in DataStore, sealed by `AesGcmSealer`, and `LookStore`.
 - `web/PageWeb.kt`: the `WebView`, its clients and the bridge listener. `web/Hooks.kt` holds the startup feature check, the Custom Tab opener and the page events, which instrumented tests replace through `AgentGuildApp`.
 - `scan/` and `ui/Scanner.kt`: CameraX and ML Kit's bundled QR model. `CameraChoice` picks the camera: a Meta passthrough camera (vendor tag `com.meta.extra_metadata.camera_source` 0, the left one first), else the first back camera, then the first front one. On a Horizon OS headset, recognized by the two system features Meta's `HorizonOsDetector` checks, it never falls back to the front camera, which shows the wearer's avatar; the scanner says the camera is unavailable instead. On a headset the scanner also asks for `horizonos.permission.HEADSET_CAMERA`, which some of Meta's documentation requires with `CAMERA`; the camera starts once `CAMERA` is granted.
-- `ui/`: the computer list (add, rename, sign in again, remove, the demo), Add Computer, the page screen and the unsupported-WebView screen. The page screen checks its computer at every `ON_RESUME`: a rejected token or a changed address offers to scan or paste the sign-in link again, and other failures keep the page with a banner. The Yard/Cards choice is saved with the window's state.
+- `ui/`: the computer list (add, rename, sign in again, remove, the demo), Add Computer, the page screen with the TV's Skin and Theme panel (`ui/LookPanel.kt`), and the unsupported-WebView screen. The page screen checks its computer at every `ON_RESUME`: a rejected token or a changed address offers to scan or paste the sign-in link again, and other failures keep the page with a banner. The Yard/Cards choice is saved with the window's state.
 
 Debug builds also accept `http://127.0.0.1:<port>` sign-in links, and allow cleartext only to `127.0.0.1` (`app/src/debug/res/xml/network_security_config.xml`); release builds allow no cleartext.
 
@@ -188,7 +203,7 @@ $token = (Get-Content <scratch folder>/auth-token).Trim()
 - `SignInTest`, `PageTest` and `QrTest` use the scratch manager: sign-in by link, a rejected token, loading, `ready`, the token leaving the address, view switching, a link opening outside, a navigation elsewhere cancelled, `window.open` refused, a new `WebView` after the renderer is terminated, and a sign-in QR code drawn by the manager's own `paintQr` and read through ML Kit.
 - `HostileTest` stages what the real manager can't with two servers inside the test process on the device's loopback interface, ports 47941 and 47942: a redirect to another origin, a form posted to another origin, a microphone request from a frame of another origin, and a manager whose `/api/v1/info` answer changes before `ON_RESUME`.
 - `StartupTest` replaces the feature check; `StoreTest` uses the Android Keystore. These two and `HealthCheckDeviceTest` need no WebView feature, so they also run on `ag29`.
-- `TvTest` replaces the TV check, so it runs anywhere. `TvRemoteTest` drives the app with remote keys and runs only on a TV such as `agtv`; CI doesn't run it, and elsewhere it is skipped.
+- `TvTest` and `TvLookTest` replace the TV check, so they run anywhere. `TvLookTest` covers the Skin and Theme panel against a page that applies `&skin=` and `&theme=` as `theme.js` does, a store whose writes fail, and the scratch manager's own skins. `TvRemoteTest` drives the app with remote keys and runs only on a TV such as `agtv`; CI doesn't run it, and elsewhere it is skipped.
 - Waits go through the Compose test rule: its clock advances only while the rule synchronizes, so a test thread that blocks any other way stops the screens from changing.
 
 ### Later

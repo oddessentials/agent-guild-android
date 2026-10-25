@@ -6,6 +6,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.oddessentials.agentguild.data.AesGcmSealer
 import com.oddessentials.agentguild.data.ComputerStore
+import com.oddessentials.agentguild.data.LookStore
 import com.oddessentials.agentguild.model.SignInLink
 import com.oddessentials.agentguild.web.LinkOpener
 import com.oddessentials.agentguild.web.PageEvents
@@ -19,6 +20,9 @@ import kotlinx.coroutines.SupervisorJob
 class AgentGuildApp : Application() {
     lateinit var store: ComputerStore
         private set
+
+    /** Each TV page's skin and theme. Instrumented tests may replace it with one whose writes fail. */
+    lateinit var looks: LookStore
 
     // Instrumented tests replace these before starting the activity.
     var webViewSupport: WebViewSupport = WebViewSupport.System
@@ -36,6 +40,7 @@ class AgentGuildApp : Application() {
             AesGcmSealer.keystore(),
             CoroutineScope(Dispatchers.IO + SupervisorJob()),
         )
+        looks = LookStore.create(File(filesDir, "datastore/looks.json"), CoroutineScope(Dispatchers.IO + SupervisorJob()))
     }
 
     fun isOnline(): Boolean {

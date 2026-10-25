@@ -63,7 +63,7 @@ class ScanTest {
     /** Opens the computer's page, has the manager reject its token on resume, and chooses to scan. */
     private fun openScannerFromRecovery(): ActivityScenario<MainActivity> {
         val scenario = harness.launch()
-        compose.onNodeWithTag("computer:Fake").click()
+        harness.openComputer("Fake")
         harness.next(harness.ready)
         status.set(401)
         scenario.moveToState(Lifecycle.State.STARTED)

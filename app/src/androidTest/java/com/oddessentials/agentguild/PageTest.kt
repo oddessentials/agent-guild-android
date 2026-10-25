@@ -39,7 +39,7 @@ class PageTest {
 
     private fun open(): android.webkit.WebView {
         val scenario = harness.launch()
-        compose.onNodeWithTag("computer:Scratch").click()
+        harness.openComputer("Scratch")
         val version = harness.next(harness.ready)
         assertTrue(version, Health.supports(version))
         return harness.webView(scenario)
@@ -151,7 +151,7 @@ class PageTest {
     @Test
     fun aNewWebViewLoadsThePageAfterTheRendererIsGone() {
         val scenario = harness.launch()
-        compose.onNodeWithTag("computer:Scratch").click()
+        harness.openComputer("Scratch")
         val version = harness.next(harness.ready)
         val first = harness.webView(scenario)
 

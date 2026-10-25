@@ -13,19 +13,43 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import com.oddessentials.agentguild.BuildConfig
 import com.oddessentials.agentguild.model.Bridge
 import com.oddessentials.agentguild.model.BridgeMessage
+import com.oddessentials.agentguild.model.Look
+import com.oddessentials.agentguild.model.Looks
 import com.oddessentials.agentguild.model.Microphone
 import com.oddessentials.agentguild.model.MicrophoneDecision
 import com.oddessentials.agentguild.model.Navigation
 import com.oddessentials.agentguild.model.NavigationDecision
 import com.oddessentials.agentguild.model.Page
+import com.oddessentials.agentguild.model.PageLook
 import com.oddessentials.agentguild.model.PageView
+import com.oddessentials.agentguild.model.Theme
+
+/** What the TV's Skin and Theme panel needs from the page, so its rules can be tested without a `WebView`. */
+interface LookPage {
+    /** Counts the page's documents; an answer counts only for the one that asked. */
+    val loads: Int
+
+    /** The current document finished loading. */
+    val loaded: Boolean
+
+    /** The skins the page offers and the look it shows, for document [load] only. */
+    fun readLook(load: Int, result: (PageLook?) -> Unit)
+
+    /** Shows [skin] and [theme] in document [load], without loading it again. */
+    fun preview(load: Int, skin: String?, theme: Theme)
+
+    /** Puts back the attributes captured from document [load]; null removes one. */
+    fun restore(load: Int, skin: String?, theme: Theme?)
+}
 
 /**
  * The `WebView` that shows one [Page], with the bridge and the rules of the README's "WebView
@@ -36,10 +60,12 @@ class PageWeb(
     val page: Page,
     initialView: PageView,
     private val compact: Boolean,
+    /** The saved look each load of the compact page uses; the page screen keeps it current. */
+    var look: Look,
     private val links: LinkOpener,
     private val events: PageEvents,
     private val microphone: MicrophoneAccess,
-) {
+) : LookPage {
     interface MicrophoneAccess {
         fun granted(): Boolean
 
@@ -55,9 +81,20 @@ class PageWeb(
     var left by mutableStateOf(false)
         private set
 
+    /**
+     * Counts the app's loads, every main-frame document the page starts itself, and the `WebView`'s
+     * end. A script's answer counts only for the document that asked, so one from an earlier
+     * document, or from a `WebView` since destroyed, is dropped.
+     */
+    override var loads by mutableIntStateOf(0)
+        private set
+
+    /** The current document finished loading on the manager's origin. */
+    override var loaded by mutableStateOf(false)
+        private set
+
     private var shownView = initialView
     private var loadedView: PageView? = null
-    private var finished = false
 
     fun start() {
         if (webView == null) webView = create().also { load(it) }
@@ -71,19 +108,45 @@ class PageWeb(
     fun show(view: PageView) {
         if (view == shownView) return
         shownView = view
-        if (finished) webView?.evaluateJavascript(Bridge.viewScript(view), null)
+        if (loaded) webView?.evaluateJavascript(Bridge.viewScript(view), null)
+    }
+
+    override fun readLook(load: Int, result: (PageLook?) -> Unit) {
+        val view = webView ?: return
+        if (!loaded || load != loads) return
+        view.evaluateJavascript(Looks.READ_SCRIPT) { json -> if (load == loads) result(Looks.parse(json)) }
+    }
+
+    override fun preview(load: Int, skin: String?, theme: Theme) {
+        if (loaded && load == loads) webView?.evaluateJavascript(Looks.previewScript(skin, theme), null)
+    }
+
+    override fun restore(load: Int, skin: String?, theme: Theme?) {
+        if (loaded && load == loads) webView?.evaluateJavascript(Looks.restoreScript(skin, theme), null)
+    }
+
+    /** Called only after persistence succeeds. A document still loading takes [look] on completion. */
+    fun applySavedLook(saved: Look) {
+        // A save can resume off the main thread. Target the current view, including a replacement.
+        ContextCompat.getMainExecutor(context).execute {
+            look = saved
+            if (compact && loaded && !left) webView?.evaluateJavascript(Looks.savedScript(look), null)
+        }
     }
 
     fun destroy() {
         webView?.let(::dispose)
         webView = null
+        loads++
+        loaded = false
     }
 
     private fun load(view: WebView) {
         left = false
-        finished = false
+        loads++
+        loaded = false
         loadedView = shownView
-        view.loadUrl(page.url(shownView, compact))
+        view.loadUrl(page.url(shownView, compact, look))
     }
 
     private fun dispose(view: WebView) {
@@ -146,6 +209,10 @@ class PageWeb(
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                if (view === webView) {
+                    loads++
+                    loaded = false
+                }
                 if (!Navigation.staysOnManager(url, page.origin)) {
                     view.stopLoading()
                     left = true
@@ -154,8 +221,11 @@ class PageWeb(
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
-                if (left || !Navigation.staysOnManager(url, page.origin)) return
-                finished = true
+                if (view !== webView || left || !Navigation.staysOnManager(url, page.origin)) return
+                // A save may have completed since this document's URL was chosen. The loaded guard
+                // also ignores completion callbacks from hash changes, preserving later previews.
+                if (!loaded && compact) view.evaluateJavascript(Looks.savedScript(look), null)
+                loaded = true
                 if (shownView != loadedView) view.evaluateJavascript(Bridge.viewScript(shownView), null)
             }
 
