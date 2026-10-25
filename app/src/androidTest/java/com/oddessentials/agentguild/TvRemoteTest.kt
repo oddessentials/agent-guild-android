@@ -163,13 +163,21 @@ class TvRemoteTest {
         return scenario
     }
 
-    /** Back on the list, where the remote reaches the computer's ⋮ menu again. */
+    /** Back on the list, with the focus already on the ⋮ the panel was opened from. */
     private fun backOnTheList(scenario: ActivityScenario<MainActivity>) {
-        compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("computer:Scratch") == 1 }
+        compose.waitUntil(10_000) { isFocused(hasContentDescription("More for Scratch")) }
         assertEquals(0, compose.onAllNodesWithTagCount("look-panel"))
         assertNotEquals(Lifecycle.State.DESTROYED, scenario.state)
-        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("computer:Scratch"))
-        moveTo(KeyEvent.KEYCODE_DPAD_RIGHT, hasContentDescription("More for Scratch"))
+    }
+
+    @Test
+    fun theListStartsOnAddComputerOrTheFirstComputerWithoutAPress() {
+        val empty = harness.launch()
+        compose.waitUntil(10_000) { isFocused(hasText("Add Computer")) }
+        empty.close()
+        harness.addManager("Scratch")
+        harness.launch()
+        compose.waitUntil(10_000) { isFocused(hasTestTag("computer:Scratch")) }
     }
 
     @Test

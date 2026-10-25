@@ -59,6 +59,7 @@ The compact page keeps no skin or theme of its own, so on a TV the app chooses t
 - Every load the app starts adds the saved skin and theme to the compact URL: `&skin=<id>&theme=<light|dark>`, with no `&theme=` for System. Agent Guild 1.5.0 and later read both. A successful Save also writes them into the current page's address with `history.replaceState`, keeping its other parameters, so a reload the page starts itself shows the saved look.
 - A new document closes the panel: the app's own load, one the page starts itself, or a new `WebView` after the renderer is gone. An answer from the page counts only for the document that asked.
 - The Menu key is taken in `MainActivity.dispatchKeyEvent`, before the page sees it, and only while a TV page shows. A held key acts once.
+- The list starts with the focus on a control, so the remote needs no press to get one: the row or ⋮ it was left from, else the first computer, else Add Computer.
 
 ## WebView security
 
