@@ -85,14 +85,14 @@ function fakeGitHub(setup = {}) {
   return { gh, state };
 }
 
-function localRelease(bytes = 'signed apk') {
+function localRelease(bytes = 'signed apk', names = [apk]) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-guild-publish-'));
-  fs.writeFileSync(path.join(dir, apk), bytes);
   const hash = (b) => crypto.createHash('sha256').update(b).digest('hex');
-  fs.writeFileSync(path.join(dir, 'SHA256SUMS'), `${hash(bytes)}  ${apk}\n`);
+  for (const name of names) fs.writeFileSync(path.join(dir, name), bytes);
+  fs.writeFileSync(path.join(dir, 'SHA256SUMS'), names.map((name) => `${hash(bytes)}  ${name}\n`).join(''));
   const notes = path.join(dir, '..', `${path.basename(dir)}-notes.md`);
   fs.writeFileSync(notes, 'notes');
-  return { dir, notes, bytes: (name) => fs.readFileSync(path.join(dir, name)), cleanup() {
+  return { dir, notes, names, bytes: (name) => fs.readFileSync(path.join(dir, name)), cleanup() {
     fs.rmSync(dir, { recursive: true });
     fs.rmSync(notes);
   } };
@@ -109,8 +109,8 @@ function run(github, local, options = {}) {
 // The state a complete release leaves: public, tagged on this commit, holding exactly these files.
 function isPublic(github, local) {
   const r = github.state.releases.get(tag);
-  return r && !r.isDraft && github.state.tags.get(tag) === sha && r.assets.size === 2 &&
-    r.assets.get(apk).equals(local.bytes(apk)) && r.assets.get('SHA256SUMS').equals(local.bytes('SHA256SUMS'));
+  return r && !r.isDraft && github.state.tags.get(tag) === sha && r.assets.size === local.names.length + 1 &&
+    local.names.every((name) => r.assets.get(name)?.equals(local.bytes(name))) && r.assets.get('SHA256SUMS').equals(local.bytes('SHA256SUMS'));
 }
 
 const cases = {
@@ -198,9 +198,36 @@ const cases = {
   },
 };
 
+const alias = 'agent-guild.apk';
+const aliasCases = {
+  'with the stable name too, a first run publishes both APKs and SHA256SUMS'(github, local) {
+    const { outcome, error } = run(github, local);
+    return [outcome === 'published' || `got ${error ?? outcome}`, isPublic(github, local) || 'not public as expected',
+      github.state.writes.join(',') === `create ${tag},tag ${tag},publish ${tag}` || `wrote ${github.state.writes}`];
+  },
+  'with the stable name too, a run interrupted after the versioned APK is finished by a re-run that adds the rest'(github, local) {
+    github.state.interrupt = 'upload';
+    const first = run(github, local);
+    const held = [...(github.state.releases.get(tag)?.assets.keys() ?? [])];
+    const { outcome, error } = run(github, local);
+    return [first.error !== undefined || 'the first run did not fail',
+      held.join(',') === apk || `the failed run left ${held}`,
+      outcome === 'published' || `got ${error ?? outcome}`, isPublic(github, local) || 'not public as expected',
+      github.state.writes.filter((w) => w.startsWith('create')).length === 1 || 'it created the release twice',
+      github.state.writes.includes(`upload ${alias}`) || `it did not upload ${alias}`,
+      !github.state.writes.includes(`upload ${apk}`) || 'it uploaded the versioned APK again'];
+  },
+  'with the stable name too, an alias that downloads differently stops it before the tag'(github, local) {
+    github.state.corrupt = alias;
+    const { error } = run(github, local);
+    return [/holds a different agent-guild\.apk/.test(error) || `got ${error}`,
+      github.state.releases.get(tag)?.isDraft === true || 'it is not a draft', !github.state.tags.has(tag) || 'it was tagged'];
+  },
+};
+
 let failed = 0;
-for (const [name, test] of Object.entries(cases)) {
-  const local = localRelease();
+for (const [suite, names] of [[cases, [apk]], [aliasCases, [apk, alias]]]) for (const [name, test] of Object.entries(suite)) {
+  const local = localRelease(undefined, names);
   let problems;
   try {
     problems = test(fakeGitHub(), local).filter((r) => r !== true);

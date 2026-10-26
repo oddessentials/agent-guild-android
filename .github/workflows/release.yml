@@ -104,8 +104,10 @@ jobs:
           mkdir "$RUNNER_TEMP/release"
           node tools/release/apk.mjs sign "$RUNNER_TEMP/unsigned/app-release-unsigned.apk" "$RUNNER_TEMP/release/$apk" \
             --keystore "$keystore" --version "$VERSION" --cert-sha256 "$CERT_SHA256"
+          # The same signed bytes under a name that stays the same, for releases/latest/download/agent-guild.apk.
+          cp -- "$RUNNER_TEMP/release/$apk" "$RUNNER_TEMP/release/agent-guild.apk"
           cd "$RUNNER_TEMP/release"
-          sha256sum -- "$apk" > SHA256SUMS
+          sha256sum -- "$apk" agent-guild.apk > SHA256SUMS
           cat SHA256SUMS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -152,11 +154,16 @@ jobs:
         run: |
           apk="agent-guild-$VERSION.apk"
           (cd "$RUNNER_TEMP/release" && sha256sum --check SHA256SUMS)
+          hash=$(sha256sum < "$RUNNER_TEMP/release/$apk" | cut -d ' ' -f 1)
+          if ! printf '%s  %s\n' "$hash" "$apk" "$hash" agent-guild.apk | cmp -s - "$RUNNER_TEMP/release/SHA256SUMS"; then
+            echo "::error::SHA256SUMS must list $apk and agent-guild.apk, with the same SHA-256."
+            exit 1
+          fi
           node tools/release/apk.mjs verify "$RUNNER_TEMP/release/$apk" --version "$VERSION" --cert-sha256 "$CERT_SHA256"
           {
             cat "$RUNNER_TEMP/plan/notes.md"
             echo
-            echo "SHA-256 of \`$apk\`: \`$(cut -d ' ' -f 1 "$RUNNER_TEMP/release/SHA256SUMS")\`"
+            echo "SHA-256 of \`$apk\`: \`$hash\`"
           } > "$RUNNER_TEMP/notes.md"
           node tools/release/publish.mjs --repo "$GITHUB_REPOSITORY" --tag "v$VERSION" --sha "$GITHUB_SHA" \
             --notes "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/release"
