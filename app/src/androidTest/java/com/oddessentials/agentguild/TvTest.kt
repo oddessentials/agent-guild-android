@@ -78,11 +78,11 @@ class TvTest {
     }
 
     @Test
-    fun theBoardIsTheCompactYardFullScreenAndAwake() {
+    fun theBoardIsTheCardsFullScreenAndAwake() {
         val scenario = open(tv = true)
         harness.next(harness.ready)
         val web = harness.webView(scenario)
-        assertEquals("#token=$token&layout=compact&expand=none&view=yard", evaluateString(web, "location.hash"))
+        assertEquals("#token=$token&view=cards&yard=none", evaluateString(web, "location.hash"))
         assertEquals(0, compose.onAllNodesWithTagCount("view:cards"))
         assertEquals(0, compose.onAllNodesWithTextCount("Back"))
         assertTrue(keepsScreenOn(scenario))
@@ -117,13 +117,14 @@ class TvTest {
     }
 
     @Test
-    fun theManagersPageIsTheCompactYard() {
+    fun theManagersPageIsTheCardsWithTheYardOff() {
         harness.addManager("Scratch")
         val scenario = open(tv = true, name = "Scratch")
         harness.next(harness.ready)
         val web = harness.webView(scenario)
-        assertEquals("compact", evaluateString(web, "document.documentElement.dataset.layout"))
-        assertEquals("yard", evaluateString(web, "document.documentElement.dataset.view"))
+        assertEquals("cards", evaluateString(web, "document.documentElement.dataset.view"))
+        assertEquals("none", evaluateString(web, "document.documentElement.dataset.yard"))
+        assertEquals("true", evaluateString(web, "String(document.getElementById('view-yard').closest('fieldset').hidden)"))
         assertFalse(evaluateString(web, "location.href")!!.contains(Harness.managerToken))
     }
 
@@ -133,7 +134,7 @@ class TvTest {
         harness.next(harness.ready)
         assertEquals("https://example.com/docs", harness.next(harness.opened))
         val web = harness.webView(scenario)
-        assertEquals("#token=$token&view=yard", evaluateString(web, "location.hash"))
+        assertEquals("#token=$token&view=cards", evaluateString(web, "location.hash"))
         compose.onNodeWithTag("view:cards").assertExists()
         assertFalse(keepsScreenOn(scenario))
         pressBack()
