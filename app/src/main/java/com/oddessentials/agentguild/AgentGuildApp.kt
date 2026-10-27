@@ -46,6 +46,8 @@ class AgentGuildApp : Application() {
 
     companion object {
         fun parseLink(text: String) = SignInLink.parse(text, allowLoopbackHttp = BuildConfig.DEBUG)
+
+        fun parseAddress(text: String) = SignInLink.parseAddress(text, allowLoopbackHttp = BuildConfig.DEBUG)
     }
 }
 

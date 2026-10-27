@@ -77,6 +77,46 @@ class SignInLinkTest {
         assertNull(parse("http://10.0.2.2:47931/#token=$token", debug = true))
     }
 
+    private fun address(text: String, debug: Boolean = false) = SignInLink.parseAddress(text, allowLoopbackHttp = debug)
+
+    @Test
+    fun aTypedAddressSavesAsTheLinkWouldSaveIt() {
+        assertEquals("https://mini.tail1234.ts.net", address("  Mini.Tail1234.ts.net\n"))
+        assertEquals("https://mini.tail1234.ts.net", address("https://mini.tail1234.ts.net/"))
+        assertEquals("https://proxy.example.com:8443", address("proxy.example.com:8443"))
+        assertEquals("https://proxy.example.com", address("proxy.example.com:443"))
+        assertEquals(parse("https://Proxy.Example.com:8443/#token=$token")!!.address, address("PROXY.example.com:8443"))
+    }
+
+    @Test
+    fun rejectsAnythingMoreThanAnAddress() {
+        val rejected = listOf(
+            "",
+            "   ",
+            "not an address",
+            "http://mini.tail1234.ts.net",
+            "ftp://mini.tail1234.ts.net",
+            "https:mini.tail1234.ts.net",
+            "user@mini.tail1234.ts.net",
+            "mini.tail1234.ts.net/guild",
+            "mini.tail1234.ts.net/?a=b",
+            "mini.tail1234.ts.net/#token=$token",
+            "https://mini.tail1234.ts.net/#token=$token",
+            "mini.tail1234.ts.net:99999",
+            "mini_tail.ts.net",
+            "mini.tail1234.ts.net other.example",
+        )
+        for (text in rejected) assertNull(text, address(text, debug = true))
+    }
+
+    @Test
+    fun debugBuildsAlsoAcceptTheScratchManagerAddress() {
+        assertEquals("http://127.0.0.1:47931", address("http://127.0.0.1:47931", debug = true))
+        assertNull(address("http://127.0.0.1:47931", debug = false))
+        assertNull(address("http://127.0.0.1", debug = true))
+        assertNull(address("http://10.0.2.2:47931", debug = true))
+    }
+
     @Test
     fun signsInAgainOnlyToTheSameComputer() {
         val studio = Computer("1", "Studio Mac", "https://mini.tail1234.ts.net:8443", "old")

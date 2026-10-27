@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.core.view.ViewCompat
@@ -20,7 +21,10 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.oddessentials.agentguild.Harness.Companion.evaluateString
+import com.oddessentials.agentguild.model.Json
 import com.oddessentials.agentguild.web.TvCheck
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -80,10 +84,20 @@ class TvRemoteTest {
         return shown
     }
 
-    private fun startAdding(): ActivityScenario<MainActivity> {
+    /** Opens Add Computer and moves to the address field, which comes first on a TV, with its keyboard open. */
+    private fun startAddress(): ActivityScenario<MainActivity> {
         val scenario = harness.launch()
         moveTo(KeyEvent.KEYCODE_DPAD_UP, hasText("Add Computer"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("address"))
+        compose.waitUntil(10_000) { imeShown(scenario) }
+        return scenario
+    }
+
+    /** The keyboard holds the remote's keys while it is open, so Back closes it before moving on to the link field. */
+    private fun startAdding(): ActivityScenario<MainActivity> {
+        val scenario = startAddress()
+        closeKeyboard(scenario)
         moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("link"))
         compose.waitUntil(10_000) { imeShown(scenario) }
         return scenario
@@ -102,6 +116,9 @@ class TvRemoteTest {
         instrumentation.sendStringSync(Harness.managerLink)
         closeKeyboard(scenario)
         compose.onNodeWithTag("link").assert(hasText(Harness.managerLink))
+        moveTo(KeyEvent.KEYCODE_DPAD_UP, hasTestTag("address"))
+        compose.waitUntil(10_000) { imeShown(scenario) }
+        closeKeyboard(scenario)
         moveTo(KeyEvent.KEYCODE_DPAD_UP, hasText("Cancel"))
         moveTo(KeyEvent.KEYCODE_DPAD_RIGHT, hasTestTag("submit"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
@@ -117,6 +134,36 @@ class TvRemoteTest {
 
         press(KeyEvent.KEYCODE_BACK)
         compose.waitUntil(10_000) { scenario.state == Lifecycle.State.DESTROYED }
+    }
+
+    /** Approves [code] on the scratch manager, as the person does in its Remote access dialog. */
+    private fun approve(code: String) {
+        val connection = URL("${Harness.managerAddress}/api/v1/sign-in/approve").openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Authorization", "Bearer ${Harness.managerToken}")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.outputStream.use { it.write("""{"code":${Json.quote(code)}}""".encodeToByteArray()) }
+            assertEquals(200, connection.responseCode)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    @Test
+    fun theRemoteSignsInByCode() {
+        val scenario = startAddress()
+        instrumentation.sendStringSync(Harness.managerAddress)
+        closeKeyboard(scenario)
+        compose.onNodeWithTag("address").assert(hasText(Harness.managerAddress))
+        moveTo(KeyEvent.KEYCODE_DPAD_DOWN, hasTestTag("getCode"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+
+        compose.waitUntil(20_000) { compose.onAllNodesWithTag("code").fetchSemanticsNodes().isNotEmpty() }
+        approve(compose.onNodeWithTag("code").fetchSemanticsNode().config[SemanticsProperties.Text].single().text)
+        compose.waitUntil(30_000) { runBlocking { harness.app.store.current() }.isNotEmpty() }
+        assertEquals(Harness.managerAddress, runBlocking { harness.app.store.current() }.single().address)
     }
 
     @Test
