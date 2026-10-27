@@ -50,7 +50,7 @@ class PageTest {
         val web = open()
         assertEquals(manager, Origin.parse(url(web)))
         assertFalse(evaluateString(web, "location.href")!!.contains(Harness.managerToken))
-        assertEquals("yard", evaluateString(web, "document.documentElement.dataset.view"))
+        assertEquals("cards", evaluateString(web, "document.documentElement.dataset.view"))
         assertEquals("function", evaluateString(web, "typeof window.agentGuild.postMessage"))
     }
 
@@ -78,10 +78,10 @@ class PageTest {
     @Test
     fun theSwitchShowsCardsAndTheYard() {
         val web = open()
-        compose.onNodeWithTag("view:cards").click()
-        harness.untilTrue(web, "document.documentElement.dataset.view === 'cards'")
         compose.onNodeWithTag("view:yard").click()
         harness.untilTrue(web, "document.documentElement.dataset.view === 'yard'")
+        compose.onNodeWithTag("view:cards").click()
+        harness.untilTrue(web, "document.documentElement.dataset.view === 'cards'")
     }
 
     @Test
@@ -162,6 +162,6 @@ class PageTest {
         val second = harness.webView(scenario, other = first)
         assertEquals(version, harness.next(harness.ready))
         assertEquals(manager, Origin.parse(url(second)))
-        assertEquals("yard", evaluateString(second, "document.documentElement.dataset.view"))
+        assertEquals("cards", evaluateString(second, "document.documentElement.dataset.view"))
     }
 }

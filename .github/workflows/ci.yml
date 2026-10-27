@@ -110,7 +110,7 @@ jobs:
     env:
       AGENT_GUILD_PORT: '47931'
       AGENT_GUILD_NO_UPDATE_CHECK: '1'
-      MANAGER_VERSION: 1.9.0
+      MANAGER_VERSION: 1.12.0
     steps:
       - run: |
           {

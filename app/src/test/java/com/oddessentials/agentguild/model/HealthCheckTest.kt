@@ -38,8 +38,8 @@ class HealthCheckTest {
 
     @Test
     fun sendsTheTokenAndReadsTheAnswer() = runBlocking {
-        answer(200, """{"name":"agent-guild","version":"1.9.0"}""")
-        assertEquals(HealthResult.Supported("1.9.0"), Health.check(address, token) { true })
+        answer(200, """{"name":"agent-guild","version":"1.12.0"}""")
+        assertEquals(HealthResult.Supported("1.12.0"), Health.check(address, token) { true })
         assertEquals("Bearer $token", authorization.get())
     }
 
@@ -59,15 +59,15 @@ class HealthCheckTest {
     @Test
     fun anAnswerTooLargeToReadIsNotAgentGuild() = runBlocking {
         val padding = " ".repeat(Health.MAX_BODY)
-        answer(200, """{"name":"agent-guild","version":"1.9.0"}$padding""")
+        answer(200, """{"name":"agent-guild","version":"1.12.0"}$padding""")
         assertEquals(HealthResult.Failed(HealthProblem.NotAgentGuild), Health.check(address, token) { true })
     }
 
     @Test
     fun anAnswerOfExactlyTheLimitIsRead() = runBlocking {
-        val json = """{"name":"agent-guild","version":"1.9.0"}"""
+        val json = """{"name":"agent-guild","version":"1.12.0"}"""
         answer(200, json + " ".repeat(Health.MAX_BODY - json.length))
-        assertEquals(HealthResult.Supported("1.9.0"), Health.check(address, token) { true })
+        assertEquals(HealthResult.Supported("1.12.0"), Health.check(address, token) { true })
     }
 
     @Test

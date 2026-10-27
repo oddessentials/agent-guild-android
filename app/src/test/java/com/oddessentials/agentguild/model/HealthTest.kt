@@ -15,11 +15,11 @@ class HealthTest {
     private fun failed(problem: HealthProblem) = HealthResult.Failed(problem)
 
     @Test
-    fun acceptsTheAndroidHostReleaseAndLater() {
-        assertEquals(supported("1.9.0"), Health.evaluate(200, """{"ok":true,"name":"agent-guild","version":"1.9.0","pid":1}"""))
-        assertEquals(supported("1.10.2"), Health.evaluate(200, """{"name":"agent-guild","version":"1.10.2"}"""))
+    fun acceptsTheYardNoneReleaseAndLater() {
+        assertEquals(supported("1.12.0"), Health.evaluate(200, """{"ok":true,"name":"agent-guild","version":"1.12.0","pid":1}"""))
+        assertEquals(supported("1.13.2"), Health.evaluate(200, """{"name":"agent-guild","version":"1.13.2"}"""))
         assertEquals(supported("2.0.0-beta.1"), Health.evaluate(200, """{"name":"agent-guild","version":"2.0.0-beta.1"}"""))
-        assertEquals(supported("1.9.0-rc.1"), Health.evaluate(200, """{"name":"agent-guild","version":"1.9.0-rc.1"}"""))
+        assertEquals(supported("1.12.0-rc.1"), Health.evaluate(200, """{"name":"agent-guild","version":"1.12.0-rc.1"}"""))
     }
 
     @Test
@@ -28,11 +28,12 @@ class HealthTest {
     }
 
     @Test
-    fun refusesAReleaseWithoutTheAndroidHost() {
-        assertEquals(failed(HealthProblem.TooOld("1.8.0")), Health.evaluate(200, """{"name":"agent-guild","version":"1.8.0"}"""))
+    fun refusesAReleaseWithoutYardNone() {
+        assertEquals(failed(HealthProblem.TooOld("1.11.0")), Health.evaluate(200, """{"name":"agent-guild","version":"1.11.0"}"""))
+        assertEquals(failed(HealthProblem.TooOld("1.9.0")), Health.evaluate(200, """{"name":"agent-guild","version":"1.9.0"}"""))
         assertEquals(failed(HealthProblem.TooOld("0.9.12")), Health.evaluate(200, """{"name":"agent-guild","version":"0.9.12"}"""))
         assertEquals(failed(HealthProblem.TooOld("next")), Health.evaluate(200, """{"name":"agent-guild","version":"next"}"""))
-        assertEquals("This computer runs Agent Guild 1.8.0. Update it to 1.9.0 or later.", HealthProblem.TooOld("1.8.0").message)
+        assertEquals("This computer runs Agent Guild 1.8.0. Update it to 1.12.0 or later.", HealthProblem.TooOld("1.8.0").message)
     }
 
     @Test
@@ -96,6 +97,6 @@ class HealthTest {
             assertTrue(Recovery.showsPage(failed(problem), showing = true))
             assertFalse(Recovery.showsPage(failed(problem), showing = false))
         }
-        assertTrue(Recovery.showsPage(supported("1.9.0"), showing = false))
+        assertTrue(Recovery.showsPage(supported("1.12.0"), showing = false))
     }
 }

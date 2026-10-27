@@ -56,8 +56,7 @@ sealed interface HealthResult {
 
 /** `GET <address>/api/v1/info` with the token: is this a supported Agent Guild, and does it accept the token? */
 object Health {
-    /** The first release with agent-guild's change "feat: support Agent Guild in the Android app web view". */
-    const val MINIMUM_VERSION = "1.9.0"
+    const val MINIMUM_VERSION = "1.12.0"
     const val TIMEOUT_MILLIS = 10_000L
 
     fun infoUrl(address: String) = address.trimEnd('/') + "/api/v1/info"
