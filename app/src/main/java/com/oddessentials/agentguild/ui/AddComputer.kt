@@ -65,9 +65,9 @@ fun AddComputer(updating: String?, scanFirst: Boolean, onDone: () -> Unit) {
     val canScan = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
     val tv = remember { app.tv.isTv(context) }
 
-    // Not saved with the activity's state: it holds the token.
+    // Not saved with the activity's state: they hold, or may hold, the token.
     var link by remember { mutableStateOf("") }
-    var address by rememberSaveable { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var problem by rememberSaveable { mutableStateOf<String?>(null) }
     var scanning by rememberSaveable { mutableStateOf(scanFirst && canScan) }
