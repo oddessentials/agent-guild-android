@@ -1,0 +1,187 @@
+name: Publish to stores
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, such as 1.2.3. Empty means the latest release.
+        type: string
+        default: ''
+      meta:
+        description: Meta Horizon Store
+        type: boolean
+        default: true
+      amazon:
+        description: Amazon Appstore
+        type: boolean
+        default: true
+      samsung:
+        description: Samsung Galaxy Store
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stores
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    name: Fetch and check the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run Publish to stores from main."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21.0.12+1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'build-tools;37.0.0' > /dev/null
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          CERT_SHA256: ${{ vars.RELEASE_CERT_SHA256 }}
+        run: |
+          version="${INPUT_VERSION#v}"
+          if [ -z "$version" ]; then
+            version=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+            version="${version#v}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::\"$version\" is not a release version."
+            exit 1
+          fi
+          if [ "$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != false ]; then
+            echo "::error::v$version is not a published release."
+            exit 1
+          fi
+          apk="agent-guild-$version.apk"
+          dir="$RUNNER_TEMP/release"
+          gh release download "v$version" --repo "$GITHUB_REPOSITORY" --pattern "$apk" --pattern SHA256SUMS --dir "$dir"
+          line=$(grep -E "^[0-9a-f]{64}  $apk\$" "$dir/SHA256SUMS" || true)
+          if [ -z "$line" ]; then
+            echo "::error::SHA256SUMS does not list $apk."
+            exit 1
+          fi
+          (cd "$dir" && printf '%s\n' "$line" | sha256sum --check --strict)
+          node tools/release/apk.mjs verify "$dir/$apk" --version "$version" --cert-sha256 "$CERT_SHA256"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Release: v$version" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-apk
+          path: ${{ runner.temp }}/release/agent-guild-${{ steps.check.outputs.version }}.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  meta:
+    name: Meta Horizon Store
+    needs: fetch
+    if: inputs.meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: store-meta
+    env:
+      META_APP_ID: ${{ vars.META_APP_ID }}
+      META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+      VERSION: ${{ needs.fetch.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: config
+        run: node tools/stores/meta.mjs configured
+      - if: steps.config.outputs.configured == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: store-apk
+          path: ${{ runner.temp }}/apk
+      - if: steps.config.outputs.configured == 'true'
+        run: |
+          cli="$RUNNER_TEMP/ovr-platform-util"
+          curl --fail --silent --show-error --location --output "$cli" \
+            'https://securecdn.oculus.com/binaries/download/?id=28342477365335702&access_token=OC%7C5159709737372459%7C'
+          echo "05d9e9dc0772ac2a4949913566bfce6bda165a41646175a060bfe433b6aa6219  $cli" | sha256sum --check --strict
+          chmod +x "$cli"
+          echo "META_CLI=$cli" >> "$GITHUB_ENV"
+      - if: steps.config.outputs.configured == 'true'
+        run: node tools/stores/meta.mjs publish "$RUNNER_TEMP/apk/agent-guild-$VERSION.apk" "$VERSION"
+
+  amazon:
+    name: Amazon Appstore
+    needs: fetch
+    if: inputs.amazon
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: store-amazon
+    env:
+      AMAZON_APP_ID: ${{ vars.AMAZON_APP_ID }}
+      AMAZON_CLIENT_ID: ${{ secrets.AMAZON_CLIENT_ID }}
+      AMAZON_CLIENT_SECRET: ${{ secrets.AMAZON_CLIENT_SECRET }}
+      VERSION: ${{ needs.fetch.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: config
+        run: node tools/stores/amazon.mjs configured
+      - if: steps.config.outputs.configured == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: store-apk
+          path: ${{ runner.temp }}/apk
+      - if: steps.config.outputs.configured == 'true'
+        run: node tools/stores/amazon.mjs publish "$RUNNER_TEMP/apk/agent-guild-$VERSION.apk" "$VERSION"
+
+  samsung:
+    name: Samsung Galaxy Store
+    needs: fetch
+    if: inputs.samsung
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: store-samsung
+    env:
+      SAMSUNG_CONTENT_ID: ${{ vars.SAMSUNG_CONTENT_ID }}
+      SAMSUNG_SERVICE_ACCOUNT_ID: ${{ secrets.SAMSUNG_SERVICE_ACCOUNT_ID }}
+      SAMSUNG_PRIVATE_KEY: ${{ secrets.SAMSUNG_PRIVATE_KEY }}
+      VERSION: ${{ needs.fetch.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: config
+        run: node tools/stores/samsung.mjs configured
+      - if: steps.config.outputs.configured == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: store-apk
+          path: ${{ runner.temp }}/apk
+      - if: steps.config.outputs.configured == 'true'
+        run: node tools/stores/samsung.mjs publish "$RUNNER_TEMP/apk/agent-guild-$VERSION.apk" "$VERSION"
