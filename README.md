@@ -32,6 +32,16 @@ The app's parser accepts a link only when every rule holds, and otherwise says i
 
 The saved address is `https://<host>[:<port>]` with the host in lowercase, and no `:443`. Before saving, the app checks `GET <address>/api/v1/info` with the bearer token, a 10-second timeout and no redirects, and accepts it only when the answer is 200 with `"name": "agent-guild"`.
 
+### Sign-in by code
+
+Add Computer also takes the computer's address, `host` or `host:port`, first on a TV. The app assumes HTTPS, saves the address as a link's would be saved, and, with the same request rules as the `/api/v1/info` check:
+
+1. `POST <address>/api/v1/sign-in`, without a token, and shows the answer's `code` and when it expires (`expiresAt`). 429 `sign_in_busy` asks to try again in a moment. A manager without device sign-in checks the token before the route and answers 401, so 401 or 404 asks to update Agent Guild to use sign-in by code; the minimum version stays as it is.
+2. `POST /sign-in/poll` with `{ device }` every `interval` seconds until the person approves or declines the code in the page's **Remote access** dialog. Declined, expired or already answered (404 `sign_in_unknown`) offers a new code. Back stops polling.
+3. Checks and saves the address and token as a link sign-in does.
+
+The device secret and the token stay inside the sign-in's coroutine: never in the screen's state, saved state or a log line.
+
 The token never appears in a log line, a crash report, a Custom Tab, or any URL other than the one the `WebView` loads. The page removes it from its own address and history once loaded. Any URL the app logs has its fragment removed.
 
 ## The page in the app: the bridge contract
@@ -159,7 +169,7 @@ adb logcat -s AGPROBE:I
 
 Kotlin and Compose, package `com.oddessentials.agentguild`, in `app/`:
 
-- `model/`: what the JVM tests cover. `SignInLink` (the parser above), `Origin`, `Health` (the `/api/v1/info` check and its `HealthProblem` messages, which read like the Apple app's), `Bridge`, `Navigation`, `Microphone`, `Recovery`, and `Json`, a strict JSON reader: Android's `org.json` accepts single quotes, comments and unquoted names, and isn't available to JVM tests.
+- `model/`: what the JVM tests cover. `SignInLink` (the link and address parsers above), `DeviceSignIn` (sign-in by code), `Origin`, `Health` (the `/api/v1/info` check and its `HealthProblem` messages, which read like the Apple app's), `Bridge`, `Navigation`, `Microphone`, `Recovery`, and `Json`, a strict JSON reader: Android's `org.json` accepts single quotes, comments and unquoted names, and isn't available to JVM tests.
 - `data/`: the list of computers in DataStore, sealed by `AesGcmSealer`.
 - `web/PageWeb.kt`: the `WebView`, its clients and the bridge listener. `web/Hooks.kt` holds the startup feature check, the Custom Tab opener and the page events, which instrumented tests replace through `AgentGuildApp`.
 - `scan/` and `ui/Scanner.kt`: CameraX and ML Kit's bundled QR model. `CameraChoice` picks the camera: a Meta passthrough camera (vendor tag `com.meta.extra_metadata.camera_source` 0, the left one first), else the first back camera, then the first front one. On a Horizon OS headset, recognized by the two system features Meta's `HorizonOsDetector` checks, it never falls back to the front camera, which shows the wearer's avatar; the scanner says the camera is unavailable instead. On a headset the scanner also asks for `horizonos.permission.HEADSET_CAMERA`, which some of Meta's documentation requires with `CAMERA`; the camera starts once `CAMERA` is granted.
@@ -188,7 +198,7 @@ $token = (Get-Content <scratch folder>/auth-token).Trim()
 - `SignInTest`, `PageTest` and `QrTest` use the scratch manager: sign-in by link, a rejected token, loading, `ready`, the token leaving the address, view switching, a link opening outside, a navigation elsewhere cancelled, `window.open` refused, a new `WebView` after the renderer is terminated, and a sign-in QR code drawn by the manager's own `paintQr` and read through ML Kit.
 - `HostileTest` stages what the real manager can't with two servers inside the test process on the device's loopback interface, ports 47941 and 47942: a redirect to another origin, a form posted to another origin, a microphone request from a frame of another origin, and a manager whose `/api/v1/info` answer changes before `ON_RESUME`.
 - `StartupTest` replaces the feature check; `StoreTest` uses the Android Keystore. These two and `HealthCheckDeviceTest` need no WebView feature, so they also run on `ag29`.
-- `TvTest` replaces the TV check, so it runs anywhere. `TvRemoteTest` drives the app with remote keys and runs only on a TV such as `agtv`; CI doesn't run it, and elsewhere it is skipped.
+- `TvTest` replaces the TV check, so it runs anywhere. `TvRemoteTest` drives the app with remote keys and runs only on a TV such as `agtv`; CI doesn't run it, and elsewhere it is skipped. Its sign-in by code needs a scratch manager with device sign-in.
 - Waits go through the Compose test rule: its clock advances only while the rule synchronizes, so a test thread that blocks any other way stops the screens from changing.
 
 ### Later

@@ -97,32 +97,50 @@ object Health {
         else -> HealthProblem.Unreachable
     }
 
+    suspend fun check(address: String, token: String, online: () -> Boolean): HealthResult =
+        when (val reply = request(infoUrl(address), online, token = token)) {
+            is Reply.Answered -> evaluate(reply.status, reply.body)
+            is Reply.Failed -> HealthResult.Failed(reply.problem)
+        }
+
+    sealed interface Reply {
+        data class Answered(val status: Int, val body: String) : Reply
+        data class Failed(val problem: HealthProblem) : Reply
+    }
+
     /**
-     * Never follows a redirect, because the request carries the token. A request that takes longer
-     * than [TIMEOUT_MILLIS] is [HealthProblem.Unreachable]. Cancelling the coroutine closes the connection.
+     * Never follows a redirect, because the request carries the token or a device sign-in's secret. A
+     * request that takes longer than [TIMEOUT_MILLIS] is [HealthProblem.Unreachable]. Cancelling the
+     * coroutine closes the connection. [post] makes it a POST with that JSON body.
      */
-    suspend fun check(address: String, token: String, online: () -> Boolean): HealthResult = coroutineScope {
-        val connection = (URL(infoUrl(address)).openConnection() as HttpURLConnection).apply {
+    suspend fun request(url: String, online: () -> Boolean, token: String? = null, post: String? = null): Reply = coroutineScope {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = false
             connectTimeout = TIMEOUT_MILLIS.toInt()
             readTimeout = TIMEOUT_MILLIS.toInt()
             useCaches = false
-            setRequestProperty("Authorization", "Bearer $token")
+            token?.let { setRequestProperty("Authorization", "Bearer $it") }
             setRequestProperty("Accept", "application/json")
+            if (post != null) {
+                requestMethod = "POST"
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+            }
         }
         val request = async(Dispatchers.IO) {
             try {
+                post?.let { body -> connection.outputStream.use { it.write(body.encodeToByteArray()) } }
                 val status = connection.responseCode
                 val stream = if (status in 200..299) connection.inputStream else connection.errorStream
                 // A body too large to read whole is never taken as Agent Guild's answer.
                 val body = stream?.use { readBody(it) }?.decodeToString().orEmpty()
-                evaluate(status, body)
+                Reply.Answered(status, body)
             } catch (error: IOException) {
-                HealthResult.Failed(problem(error, online()))
+                Reply.Failed(problem(error, online()))
             }
         }
         try {
-            withTimeoutOrNull(TIMEOUT_MILLIS) { request.await() } ?: HealthResult.Failed(HealthProblem.Unreachable)
+            withTimeoutOrNull(TIMEOUT_MILLIS) { request.await() } ?: Reply.Failed(HealthProblem.Unreachable)
         } finally {
             // Ends a request still blocked on the network, after a timeout or a cancellation.
             connection.disconnect()
