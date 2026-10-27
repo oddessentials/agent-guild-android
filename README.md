@@ -43,7 +43,7 @@ agent-guild's `docs/api.md`, **The page in the Agent Guild app → Android**, is
 - The app accepts a message only when `isMainFrame` is true and `sourceOrigin` equals the manager's origin, then parses the JSON and accepts only those types with their fields.
 - To show a view, the app runs `window.postMessage({ source: "agent-guild-app", type: "view", view }, location.origin)` with `evaluateJavascript` after `onPageFinished`. `view` is `"cards"` or `"yard"`, from a fixed list, never from text.
 
-The page needs agent-guild's change "feat: support Agent Guild in the Android app web view". The app's minimum Agent Guild version is the first release that carries it, 1.9.0 (`Health.MINIMUM_VERSION`). A development build reports `0.0.0-development` and is accepted, as the Apple app does.
+The app's minimum Agent Guild version is 1.12.0, the first release with `&yard=none` (`Health.MINIMUM_VERSION`). A development build reports `0.0.0-development` and is accepted, as the Apple app does.
 
 The app accepts `ready` and `open`, and ignores `look`.
 
@@ -208,7 +208,7 @@ Pull requests are squash-merged, so a pull request's title becomes its commit on
 | Build, unit tests and lint | `testDebugUnitTest`, `lintDebug` and `assembleRelease` |
 | Signing (disposable key) | Signs the release APK with a key made for the job, as a release does, then `tests/release/apk.mjs` |
 | Release plan | `tests/release/plan.mjs` and `tests/release/publish.mjs` |
-| Instrumented tests (API 37) | The whole suite, against a scratch manager installed from npm at 1.9.0, the minimum version |
+| Instrumented tests (API 37) | The whole suite, against a scratch manager installed from npm at 1.12.0, the minimum version |
 | Instrumented tests (API 29) | `StartupTest`, `StoreTest` and `HealthCheckDeviceTest` |
 | Required checks | Passes only when all of the above pass |
 
