@@ -4,9 +4,11 @@ import android.os.Bundle
 import android.os.Parcel
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.oddessentials.agentguild.model.HealthProblem
@@ -61,6 +63,22 @@ class SignInTest {
         val saved = Bundle()
         scenario.onActivity { InstrumentationRegistry.getInstrumentation().callActivityOnSaveInstanceState(it, saved) }
         assertFalse(holds(saved, token))
+    }
+
+    @Test
+    fun signingInAgainByCodeRefusesAnotherComputersAddressWithoutAskingIt() {
+        FakeServer(0).use { other ->
+            harness.add("https://mini.tail1234.ts.net/#token=${"0".repeat(48)}", "Studio")
+            harness.launch()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTagCount("computer:Studio") == 1 }
+            compose.onNodeWithContentDescription("More for Studio").click()
+            compose.onNodeWithText("Sign In Again").click()
+            compose.onNodeWithTag("address").performTextReplacement(other.origin)
+            compose.onNodeWithTag("getCode").click()
+
+            compose.waitUntil(10_000) { compose.onAllNodesWithTextCount("This address belongs to a different computer.") == 1 }
+            assertEquals(emptyList<FakeServer.Request>(), other.requests.toList())
+        }
     }
 
     @Test

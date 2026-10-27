@@ -10,8 +10,7 @@ data class SignInLink(val address: String, val token: String) {
     val defaultName: String
         get() = origin.host.split('.').first().ifEmpty { "Agent Guild" }
 
-    /** Signing in again is allowed only to the same computer: the same host, whatever the port. */
-    fun isFor(computer: Computer) = origin.host == Origin.parse(computer.address)?.host
+    fun isFor(computer: Computer) = isFor(address, computer)
 
     // Only the address: the token never goes in a log line.
     override fun toString() = "SignInLink($address)"
@@ -20,6 +19,9 @@ data class SignInLink(val address: String, val token: String) {
         private const val HEX = "[a-f0-9]{32,}"
         private val TOKEN = Regex("^token=($HEX)$")
         private val TOKEN_VALUE = Regex(HEX)
+
+        /** Signing in again is allowed only to the same computer: the same host, whatever the port. */
+        fun isFor(address: String, computer: Computer) = Origin.parse(address)!!.host == Origin.parse(computer.address)?.host
 
         /** [address] with a [token] from device sign-in, or null when the token isn't one the manager makes. */
         fun of(address: String, token: String) = SignInLink(address, token).takeIf { TOKEN_VALUE.matches(token) }

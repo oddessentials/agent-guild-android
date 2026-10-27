@@ -130,9 +130,18 @@ fun AddComputer(updating: String?, scanFirst: Boolean, onDone: () -> Unit) {
         }
         problem = null
         requesting?.cancel()
-        codeScreen = CodeScreen()
         // The device secret and the token stay in this coroutine; the screen holds only the code.
         requesting = scope.launch {
+            // The computer as the store has it now, before anything is asked of the address.
+            if (updating != null) {
+                val current = app.store.current().firstOrNull { it.id == updating }
+                if (current == null || !SignInLink.isFor(computer, current)) {
+                    codeScreen = null
+                    problem = if (current == null) "This computer was removed." else "This address belongs to a different computer."
+                    return@launch
+                }
+            }
+            codeScreen = CodeScreen()
             when (val started = DeviceSignIn.start(computer, app::isOnline)) {
                 is Answer.Code -> {
                     val screen = CodeScreen(started.code, started.expiresAt)
