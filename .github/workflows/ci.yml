@@ -101,6 +101,7 @@ jobs:
         working-directory: .github/release
       - run: node tests/release/plan.mjs
       - run: node tests/release/publish.mjs
+      - run: node --test tests/stores/report.mjs tests/stores/meta.mjs tests/stores/amazon.mjs tests/stores/samsung.mjs
 
   # The suite runs against a scratch manager of the minimum Agent Guild version the app supports.
   device:

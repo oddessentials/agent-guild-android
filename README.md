@@ -217,7 +217,7 @@ Pull requests are squash-merged, so a pull request's title becomes its commit on
 | --- | --- |
 | Build, unit tests and lint | `testDebugUnitTest`, `lintDebug` and `assembleRelease` |
 | Signing (disposable key) | Signs the release APK with a key made for the job, as a release does, then `tests/release/apk.mjs` |
-| Release plan | `tests/release/plan.mjs` and `tests/release/publish.mjs` |
+| Release plan | `tests/release/plan.mjs`, `tests/release/publish.mjs` and `tests/stores` |
 | Instrumented tests (API 37) | The whole suite, against a scratch manager installed from npm at 1.12.0, the minimum version |
 | Instrumented tests (API 29) | `StartupTest`, `StoreTest` and `HealthCheckDeviceTest` |
 | Required checks | Passes only when all of the above pass |
@@ -260,6 +260,28 @@ node tests/release/publish.mjs
 ./gradlew.bat :app:assembleRelease "-PagentGuildVersion=1.2.3"   # PowerShell splits the argument at its dots unless it is quoted
 node tests/release/apk.mjs app/build/outputs/apk/release/app-release-unsigned.apk 1.2.3
 ```
+
+### Stores
+
+`.github/workflows/stores.yml`, **Publish to stores**, runs only by hand from `main`. It takes a release version, or the latest release when left empty, and a box for each store.
+
+1. **Fetch.** It downloads `agent-guild-<version>.apk` and `SHA256SUMS` from that GitHub release, checks the APK against its line in `SHA256SUMS`, then checks it with `tools/release/apk.mjs verify`. It never builds or signs.
+2. **One job per store**, each in its own environment. A store failing doesn't stop the others. Runs don't overlap.
+
+Each store's line in the run's summary means one of:
+
+- **skipped:** none of its settings are set. The job succeeds.
+- **failed:** a setting is missing while others are set, or the store refused something. The job fails.
+- **submitted:** the store took the APK and it is in the store's review.
+- **manual action required:** the APK is uploaded but not submitted. The line names what to do.
+
+| Store | Environment | Settings | What it does |
+|---|---|---|---|
+| Meta Horizon Store | `store-meta` | variable `META_APP_ID`; secret `META_APP_SECRET`, from the Developer Dashboard's **Development → API** | Uploads with `ovr-platform-util` 208.0.0, pinned by SHA-256, to the Store channel as a draft, and waits for Meta's malware and security checks. The utility can't submit, so the result is **manual action required**: submit the draft under **App submissions**. |
+| Amazon Appstore | `store-amazon` | variable `AMAZON_APP_ID`; secrets `AMAZON_CLIENT_ID` and `AMAZON_CLIENT_SECRET`, from a security profile under **Apps & Services → API Access** | Opens an edit, replaces the app's one APK, keeping its device targeting, validates and commits. It refuses when an edit is already open, and deletes the edit it opened when a later step fails. |
+| Samsung Galaxy Store | `store-samsung` | variable `SAMSUNG_CONTENT_ID`; secrets `SAMSUNG_SERVICE_ACCOUNT_ID` and `SAMSUNG_PRIVATE_KEY`, from Seller Portal's **API Service** | Opens an update, adds the APK with the device settings of the binary on sale, and submits it. It refuses unless the app is For Sale with no update open. A failure after the update opens leaves it open in Seller Portal. |
+
+Every store refuses an APK whose versionCode isn't above the store's, except Meta, whose upload refuses it itself. The first release in each store is made in its console, since the APIs only update an app that exists. Make each environment deployable from `main` only.
 
 ## Limits known now
 
