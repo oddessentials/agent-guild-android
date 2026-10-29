@@ -215,8 +215,8 @@ Pull requests are squash-merged, so a pull request's title becomes its commit on
 
 | Job | What it runs |
 | --- | --- |
-| Build, unit tests and lint | `testDebugUnitTest`, `lintDebug` and `assembleRelease` |
-| Signing (disposable key) | Signs the release APK with a key made for the job, as a release does, then `tests/release/apk.mjs` |
+| Build, unit tests and lint | `testDebugUnitTest`, `lintDebug`, `assembleRelease` and `bundleRelease` |
+| Signing (disposable key) | Signs the release APK and app bundle with a key made for the job, as a release does, then `tests/release/apk.mjs` and `tests/release/aab.mjs` |
 | Release plan | `tests/release/plan.mjs`, `tests/release/publish.mjs` and `tests/stores` |
 | Instrumented tests (API 37) | The whole suite, against a scratch manager installed from npm at 1.12.0, the minimum version |
 | Instrumented tests (API 29) | `StartupTest`, `StoreTest` and `HealthCheckDeviceTest` |
@@ -231,14 +231,15 @@ Pull requests are squash-merged, so a pull request's title becomes its commit on
 `.github/workflows/release.yml` runs on every push to `main`:
 
 1. **Plan.** semantic-release, as a dry run, plans the version from the titles since the last `v*` tag. `feat` gives a minor release, `fix`, `perf` and `revert` a patch, and `!` a major one; other types release nothing.
-2. **Build.** CI runs, and its build makes the release APK with `-PagentGuildVersion=<version>`.
+2. **Build.** CI runs, and its build makes the release APK and app bundle with `-PagentGuildVersion=<version>`.
    - `versionCode` is major × 1,000,000 + minor × 1,000 + patch, so it rises with every release.
    - Gradle and the plan refuse a version whose code doesn't fit: minor or patch above 999, or major above 2099.
 3. **Sign.** The sign job is the only one with the release key, and it runs no Gradle.
    - `tools/release/apk.mjs` signs the APK with `apksigner`, with v2 and v3 signatures, and no v1 or v4.
    - It then checks that the APK has both signatures, one signer whose certificate is `RELEASE_CERT_SHA256`, the app's package, version name and code, and isn't debuggable.
+   - `tools/release/aab.mjs` signs the app bundle for Google Play with `jarsigner` and the same key, and checks it the same way, reading its manifest with bundletool 1.18.3, pinned by SHA-256.
 4. **Publish.** The release job checks the files again, then `tools/release/publish.mjs` publishes them.
-   - It creates a draft release holding `agent-guild-<version>.apk` and `SHA256SUMS`, downloads both and compares them with the signed files, then creates the tag and makes the release public.
+   - It creates a draft release holding `agent-guild-<version>.apk`, `agent-guild.apk`, `agent-guild-<version>.aab` and `SHA256SUMS`, downloads them and compares them with the signed files, then creates the tag and makes the release public.
    - A failed run leaves at most a draft, and re-running its failed jobs finishes it.
    - Anything on GitHub that doesn't match stops the run without changing it, such as a tag on another commit or a draft holding another APK.
 
@@ -257,8 +258,10 @@ To check the release tools locally, with `JAVA_HOME` and `ANDROID_HOME` set:
 npm ci --ignore-scripts --prefix .github/release
 node tests/release/plan.mjs
 node tests/release/publish.mjs
-./gradlew.bat :app:assembleRelease "-PagentGuildVersion=1.2.3"   # PowerShell splits the argument at its dots unless it is quoted
+./gradlew.bat :app:assembleRelease :app:bundleRelease "-PagentGuildVersion=1.2.3"   # PowerShell splits the argument at its dots unless it is quoted
 node tests/release/apk.mjs app/build/outputs/apk/release/app-release-unsigned.apk 1.2.3
+$env:BUNDLETOOL_JAR = '<path to bundletool-all-1.18.3.jar>'
+node tests/release/aab.mjs app/build/outputs/bundle/release/app-release.aab 1.2.3
 ```
 
 ### Stores
@@ -280,6 +283,7 @@ Each store's line in the run's summary means one of:
 | Meta Horizon Store | `store-meta` | variable `META_APP_ID`; secret `META_APP_SECRET`, from the Developer Dashboard's **Development → API** | Uploads with `ovr-platform-util` 208.0.0, pinned by SHA-256, to the Store channel as a draft, and waits for Meta's malware and security checks. The utility can't submit, so the result is **manual action required**: submit the draft under **App submissions**. |
 | Amazon Appstore | `store-amazon` | variable `AMAZON_APP_ID`; secrets `AMAZON_CLIENT_ID` and `AMAZON_CLIENT_SECRET`, from a security profile under **Apps & Services → API Access** | Opens an edit, replaces the app's one APK, keeping its device targeting, validates and commits. It refuses when an edit is already open, and deletes the edit it opened when a later step fails. |
 | Samsung Galaxy Store | `store-samsung` | variable `SAMSUNG_CONTENT_ID`; secrets `SAMSUNG_SERVICE_ACCOUNT_ID` and `SAMSUNG_PRIVATE_KEY`, from Seller Portal's **API Service** | Opens an update, adds the APK with the device settings of the binary on sale, and submits it. It refuses unless the app is For Sale with no update open. A failure after the update opens leaves it open in Seller Portal. |
+| Google Play | `store-google-play` | secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, a Google Cloud service account key whose account has release rights for the app in Play Console's **Users and permissions**; optional variable `GOOGLE_PLAY_TRACK` (`internal`, `alpha`, `beta` or `production`, the default) | Downloads `agent-guild-<version>.aab` from the release and checks it against `SHA256SUMS` and with `tools/release/aab.mjs verify`, so a release without a bundle fails only this job. Opens an edit, uploads the bundle, checks the versionCode and SHA-256 Google reports, releases it to the track and commits. It deletes the edit it opened when a later step fails. |
 
 Every store refuses an APK whose versionCode isn't above the store's, except Meta, whose upload refuses it itself. The first release in each store is made in its console, since the APIs only update an app that exists. Make each environment deployable from `main` only.
 
