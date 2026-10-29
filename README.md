@@ -10,7 +10,7 @@ The app shows the manager's own page in a `WebView`, loaded from the manager's r
 
 - **Never copy the page into the app.** The manager answers 403 to `Origin: null` and to custom schemes (`checkRequestSource` in agent-guild's `src/manager/server.mjs`), and a copy would drift from the manager it talks to. Loading the page from the manager keeps the app in step with every manager version.
 - **Every way of running Agent Guild runs the same Node manager**, so there is one kind of server to connect to.
-- **No Google Play services.** The app is sideloaded, including onto devices without them.
+- **No Google Play services.** The app installs from its GitHub releases, the Amazon Appstore and the Meta Horizon Store, including onto devices without them.
 
 ## How the app reaches a computer
 
@@ -288,7 +288,7 @@ Every store refuses an APK whose versionCode isn't above the store's, except Met
 - **Dictate** needs a speech recognition service on the device. Without one, pressing Dictate ends at once and the page shows nothing. Detecting that natively and telling the page would change the bridge contract, so it needs approval first.
 - **Read aloud** is hidden until it is done natively.
 - **No notifications or background connection:** the `WebView`'s sockets close when Android stops the app, and the page reconnects when it returns. The sessions keep running on the computer.
-- **Meta Horizon OS:** sideloaded only, untested on a headset. Scanning needs a Quest 3 or 3S on Horizon OS v74 or later, with passthrough on; elsewhere, paste the sign-in link. Whether the headset's `WebView` supports `WEB_MESSAGE_LISTENER` is unknown; without it, the app shows its unsupported screen.
+- **Meta Horizon OS:** scanning needs a Quest 3 or 3S on Horizon OS v74 or later, with passthrough on; elsewhere, paste the sign-in link.
 - **Emulator and Tailscale:** tailnet names resolve only with `start.ps1 -Tailnet`.
 
 ## License
