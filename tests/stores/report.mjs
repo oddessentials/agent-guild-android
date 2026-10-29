@@ -30,7 +30,7 @@ test('redact hides every secret', () => {
 function cli(script, args, env) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stores-'));
   const files = { GITHUB_OUTPUT: path.join(dir, 'output'), GITHUB_STEP_SUMMARY: path.join(dir, 'summary') };
-  const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(META|AMAZON|SAMSUNG)_/.test(k)));
+  const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(META|AMAZON|SAMSUNG|GOOGLE_PLAY)_/.test(k)));
   let code = 0;
   let stdout;
   try {
@@ -47,7 +47,7 @@ function cli(script, args, env) {
   return result;
 }
 
-for (const script of ['meta.mjs', 'amazon.mjs', 'samsung.mjs']) {
+for (const script of ['meta.mjs', 'amazon.mjs', 'samsung.mjs', 'google-play.mjs']) {
   test(`${script} without configuration reports a skip and succeeds`, () => {
     const r = cli(script, ['configured'], {});
     assert.equal(r.code, 0);
@@ -78,10 +78,12 @@ test('full configuration is reported as configured', () => {
 
 test('each store job depends only on the checked release, so one store failing leaves the others running', () => {
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/stores.yml'), 'utf8');
-  for (const job of ['meta', 'amazon', 'samsung']) {
-    const block = workflow.split(new RegExp(`^  ${job}:$`, 'm'))[1].split(/^  [a-z]+:$/m)[0];
+  const fetch = workflow.split(/^  fetch:$/m)[1].split(/^  [a-z-]+:$/m)[0];
+  assert.doesNotMatch(fetch, /google|aab/i);
+  for (const job of ['meta', 'amazon', 'samsung', 'google-play']) {
+    const block = workflow.split(new RegExp(`^  ${job}:$`, 'm'))[1].split(/^  [a-z-]+:$/m)[0];
     assert.match(block, /^    needs: fetch$/m);
-    assert.match(block, new RegExp(`^    if: inputs\\.${job}$`, 'm'));
+    assert.match(block, new RegExp(`^    if: inputs\\.${job.replace('-', '_')}$`, 'm'));
     assert.match(block, new RegExp(`^    environment: store-${job}$`, 'm'));
   }
   assert.match(workflow, /^concurrency:\n  group: stores\n  cancel-in-progress: false$/m);
