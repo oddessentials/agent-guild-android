@@ -117,3 +117,10 @@ test('an escaped private key from a secret store still signs', async () => {
   const result = await publish({ env: escaped, apk: 'a.aab', version: '1.2.3', fetch: f.fetch, read, now });
   assert.equal(result.status, 'submitted');
 });
+
+test('release notes go on the release in en-US', async () => {
+  const f = fakeFetch(routes());
+  await publish({ env, apk: 'a.aab', version: '1.2.3', notes: '• Faster sign-in', fetch: f.fetch, read, now });
+  const track = f.calls.find((c) => c.key === `PUT ${A}/edits/e-1/tracks/production`);
+  assert.deepEqual(JSON.parse(track.init.body).releases[0].releaseNotes, [{ language: 'en-US', text: '• Faster sign-in' }]);
+});
