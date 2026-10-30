@@ -28,8 +28,8 @@ import com.oddessentials.agentguild.model.Page
 import com.oddessentials.agentguild.model.PageView
 
 /**
- * The `WebView` that shows one [Page], with the bridge and the rules of the README's "WebView
- * security". It loads only [Page.url], and keeps its main frame on the page's origin.
+ * The `WebView` that shows one [Page], with the bridge. It loads only [Page.url], and keeps its
+ * main frame on the page's origin.
  */
 class PageWeb(
     private val context: Context,
