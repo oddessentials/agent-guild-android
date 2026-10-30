@@ -57,7 +57,8 @@ export async function main(meta, store) {
     if (command !== 'publish' || !apk || !version) throw new StoreError(`Usage: node ${process.argv[1]} configured | publish <apk> <version>`);
     if (!isConfigured) throw new StoreError(`Not configured: set ${store.names.join(', ')}.`);
     versionCodeOf(version);
-    write(store.name, await store.publish({ env: process.env, apk, version, fetch: globalThis.fetch }));
+    const notes = process.env.STORE_NOTES_FILE ? fs.readFileSync(process.env.STORE_NOTES_FILE, 'utf8').trim() : '';
+    write(store.name, await store.publish({ env: process.env, apk, version, notes, fetch: globalThis.fetch }));
   } catch (err) {
     write(store.name, { status: 'failed', message: redact(err.message, store.names.map((n) => process.env[n])) });
     process.exitCode = 1;

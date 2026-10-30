@@ -11,7 +11,7 @@ function runCli(file, args) {
   });
 }
 
-export async function publish({ env, apk, version, run = runCli }) {
+export async function publish({ env, apk, version, notes = '', run = runCli }) {
   const appId = env.META_APP_ID;
   if (!/^[0-9]+$/.test(appId)) throw new StoreError('META_APP_ID must be the numeric app ID.');
   if (!env.META_CLI) throw new StoreError('META_CLI must name the ovr-platform-util binary.');
@@ -25,6 +25,8 @@ export async function publish({ env, apk, version, run = runCli }) {
     '--draft',
     '--wait-for-postprocessing',
     '--disable-progress-bar',
+    // The utility reads \n in its notes as a line break.
+    ...(notes ? ['--notes', notes.replace(/\n/g, '\\n')] : []),
   ]);
   const build = /Created Build ID: ([0-9]+)/.exec(output)?.[1];
   if (code !== 0 || !build) {

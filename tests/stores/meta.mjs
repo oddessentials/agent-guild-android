@@ -56,3 +56,16 @@ test('a non-numeric app ID stops before any upload', async () => {
   await assert.rejects(publish({ env: { ...env, META_APP_ID: 'abc' }, apk: 'a.apk', version: '1.2.3', run }), /numeric app ID/);
   assert.equal(calls.length, 0);
 });
+
+test('release notes pass to the utility, with line breaks as \\n', async () => {
+  const { run, calls } = runner({ code: 0, output: 'Created Build ID: 987654\n' });
+  await publish({ env, apk: 'a.apk', version: '1.2.3', notes: '• One\n• Two', run });
+  const args = calls[0].args;
+  assert.equal(args[args.indexOf('--notes') + 1], '• One\\n• Two');
+});
+
+test('no release notes means no --notes', async () => {
+  const { run, calls } = runner({ code: 0, output: 'Created Build ID: 987654\n' });
+  await publish({ env, apk: 'a.apk', version: '1.2.3', run });
+  assert.ok(!calls[0].args.includes('--notes'));
+});

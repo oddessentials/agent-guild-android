@@ -6,6 +6,7 @@ import { call, main, StoreError } from './report.mjs';
 export const NAMES = ['AMAZON_CLIENT_ID', 'AMAZON_CLIENT_SECRET', 'AMAZON_APP_ID'];
 const TOKEN_URL = 'https://api.amazon.com/auth/o2/token';
 const API = 'https://developer.amazon.com/api/appstore/v1/applications';
+const LANGUAGE = 'en-US';
 
 async function token(fetch, env) {
   const body = new URLSearchParams({
@@ -23,7 +24,7 @@ async function token(fetch, env) {
   return json.access_token;
 }
 
-export async function publish({ env, apk, version, fetch, read = fs.readFileSync }) {
+export async function publish({ env, apk, version, notes = '', fetch, read = fs.readFileSync }) {
   const code = versionCodeOf(version);
   const appId = encodeURIComponent(env.AMAZON_APP_ID);
   const bearer = await token(fetch, env);
@@ -66,6 +67,15 @@ export async function publish({ env, apk, version, fetch, read = fs.readFileSync
     if (replaced.json?.versionCode !== undefined && Number(replaced.json.versionCode) !== code) {
       throw new StoreError(`Amazon reports versionCode ${replaced.json.versionCode} after the upload, not ${code}.`);
     }
+    if (notes) {
+      const listingPath = `${e}/listings/${LANGUAGE}`;
+      const listing = await api('GET', listingPath);
+      if (!listing.json) throw new StoreError(`Amazon gave no ${LANGUAGE} listing.`);
+      await api('PUT', listingPath, {
+        headers: { 'if-match': etag(listing), 'content-type': 'application/json' },
+        body: JSON.stringify({ ...listing.json, recentChanges: notes }),
+      });
+    }
     await api('POST', `${e}/validate`);
     await api('POST', `${e}/commit`, { headers: { 'if-match': etag(await api('GET', e)) } });
   } catch (err) {
@@ -79,7 +89,7 @@ export async function publish({ env, apk, version, fetch, read = fs.readFileSync
   }
   return {
     status: 'submitted',
-    message: `Submitted ${version} (versionCode ${code}) for review in edit ${edit.id}, replacing the APK and keeping its device targeting.`,
+    message: `Submitted ${version} (versionCode ${code}) for review in edit ${edit.id}, replacing the APK and keeping its device targeting${notes ? ', with release notes' : ''}.`,
   };
 }
 

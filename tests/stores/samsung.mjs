@@ -125,3 +125,10 @@ test('an escaped private key from a secret store still signs', async () => {
   const result = await publish({ env: escaped, apk: 'a.apk', version: '1.2.3', fetch: f.fetch, read, now });
   assert.equal(result.status, 'submitted');
 });
+
+test('release notes go in the update as its new features', async () => {
+  const f = fakeFetch(routes());
+  await publish({ env, apk: 'a.apk', version: '1.2.3', notes: '• Faster sign-in', fetch: f.fetch, read, now });
+  const update = f.calls.find((c) => c.key === `POST ${D}/seller/contentUpdate`);
+  assert.equal(JSON.parse(update.init.body).newFeature, '• Faster sign-in');
+});

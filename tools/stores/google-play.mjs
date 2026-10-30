@@ -10,6 +10,7 @@ const SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
 const API = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}`;
 const UPLOAD = `https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/${PACKAGE}`;
 const TRACKS = ['internal', 'alpha', 'beta', 'production'];
+const LANGUAGE = 'en-US';
 
 const base64url = (data) => Buffer.from(data).toString('base64url');
 
@@ -34,7 +35,7 @@ export function jwt({ email, privateKey, now }) {
   return `${head}.${claims}.${base64url(signature)}`;
 }
 
-export async function publish({ env, apk: aab, version, fetch, read = fs.readFileSync, now = Date.now() }) {
+export async function publish({ env, apk: aab, version, notes = '', fetch, read = fs.readFileSync, now = Date.now() }) {
   const code = versionCodeOf(version);
   const track = env.GOOGLE_PLAY_TRACK || 'production';
   if (!TRACKS.includes(track)) throw new StoreError(`GOOGLE_PLAY_TRACK must be one of ${TRACKS.join(', ')}, not "${track}".`);
@@ -69,9 +70,11 @@ export async function publish({ env, apk: aab, version, fetch, read = fs.readFil
     }
     const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
     if (uploaded.sha256 !== sha256) throw new StoreError(`Google reports SHA-256 ${uploaded.sha256} for the upload, not ${sha256}.`);
+    const release = { name: version, versionCodes: [String(code)], status: 'completed' };
+    if (notes) release.releaseNotes = [{ language: LANGUAGE, text: notes }];
     await api('PUT', `${API}${e}/tracks/${track}`, {
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ track, releases: [{ name: version, versionCodes: [String(code)], status: 'completed' }] }),
+      body: JSON.stringify({ track, releases: [release] }),
     });
     await api('POST', `${API}${e}:commit`);
   } catch (err) {

@@ -18,7 +18,7 @@ export function jwt({ serviceAccountId, privateKey, now }) {
   return `${head}.${claims}.${base64url(signature)}`;
 }
 
-export async function publish({ env, apk, version, fetch, read = fs.readFileSync, now = Date.now() }) {
+export async function publish({ env, apk, version, notes = '', fetch, read = fs.readFileSync, now = Date.now() }) {
   const code = versionCodeOf(version);
   const contentId = env.SAMSUNG_CONTENT_ID;
   if (!/^[0-9]{12}$/.test(contentId)) throw new StoreError('SAMSUNG_CONTENT_ID must be the 12-digit content ID.');
@@ -74,6 +74,7 @@ export async function publish({ env, apk, version, fetch, read = fs.readFileSync
     paid: sale.paid,
     privatePolicyURLYN: sale.privatePolicyURLYN,
     publicationType: sale.publicationType,
+    ...(notes ? { newFeature: notes } : {}),
   })).json;
   if (update?.errorCode) throw new StoreError(`contentUpdate failed: ${update.errorMsg ?? update.errorCode}.`);
 

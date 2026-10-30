@@ -103,3 +103,28 @@ test('a mismatched versionCode after upload fails', async () => {
   const f = fakeFetch(routes({ [`PUT ${E}/apks/apk1/replace`]: { body: { id: 'apk1', versionCode: 9001 } } }));
   await assert.rejects(publish({ env, apk: 'a.apk', version: '1.2.3', fetch: f.fetch, read }), /reports versionCode 9001/);
 });
+
+test('release notes replace the en-US listing\'s recent changes, keeping the rest of it', async () => {
+  const listing = { language: 'en-US', title: 'Agent Guild: Remote', shortDescription: 's', fullDescription: 'f', recentChanges: 'old', featureBullets: ['b'], keywords: ['k'] };
+  const f = fakeFetch(routes({
+    [`GET ${E}/listings/en-US`]: { body: listing, headers: { etag: '"listing-etag"' } },
+    [`PUT ${E}/listings/en-US`]: { body: {} },
+  }));
+  const result = await publish({ env, apk: 'a.apk', version: '1.2.3', notes: '• Faster sign-in', fetch: f.fetch, read });
+  assert.match(result.message, /with release notes/);
+  const keys = f.keys();
+  assert.ok(keys.indexOf(`PUT ${E}/apks/apk1/replace`) < keys.indexOf(`PUT ${E}/listings/en-US`));
+  assert.ok(keys.indexOf(`PUT ${E}/listings/en-US`) < keys.indexOf(`POST ${E}/validate`));
+  const put = f.calls.find((c) => c.key === `PUT ${E}/listings/en-US`).init;
+  assert.equal(put.headers['if-match'], '"listing-etag"');
+  assert.deepEqual(JSON.parse(put.body), { ...listing, recentChanges: '• Faster sign-in' });
+});
+
+test('a listing update that fails deletes the edit', async () => {
+  const f = fakeFetch(routes({
+    [`GET ${E}/listings/en-US`]: { body: { language: 'en-US' }, headers: { etag: '"l"' } },
+    [`PUT ${E}/listings/en-US`]: { status: 412, body: '{"errors":["precondition"]}' },
+  }));
+  await assert.rejects(publish({ env, apk: 'a.apk', version: '1.2.3', notes: 'n', fetch: f.fetch, read }), /answered 412.*was deleted/s);
+  assert.ok(!f.keys().includes(`POST ${E}/commit`));
+});
